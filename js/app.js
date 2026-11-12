@@ -946,7 +946,7 @@ function resolvePlaceImage(titles) {
       }
     } catch (e) {
       delete placeImgPending[key];
-      return null; // network problem: don't cache, try again next render
+      return undefined; // network problem / rate limit: don't cache, caller retries
     }
     placeImgCache[key] = src;
     savePlaceImgCache();
@@ -962,10 +962,15 @@ function hydratePlaceImages(root) {
       const parsed = JSON.parse(decodeURIComponent(img.dataset.wiki));
       titles = (Array.isArray(parsed) ? parsed : [parsed]).filter(Boolean);
     } catch (e) { titles = []; }
-    resolvePlaceImage(titles).then(src => {
+    const load = (attempt) => resolvePlaceImage(titles).then(src => {
+      if (src === undefined && attempt < 3 && img.isConnected) {
+        setTimeout(() => load(attempt + 1), 3000 * (attempt + 1)); // temporary error: retry
+        return;
+      }
       if (!src) return; // keep the neutral placeholder rather than an unrelated photo
       img.onload = () => img.classList.remove("opacity-0");
       img.src = src;
     });
+    load(0);
   });
 }
