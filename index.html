@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>GlobePlanner - Akıllı Dünya Seyahat & Tatil Planlayıcı</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0ea5e9',
+              600: '#0284c7',
+              700: '#0369a1',
+              900: '#0c4a6e',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts & Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="css/styles.css?v=2.1">
+
+  <!-- Optional CDNs with graceful fallback -->
+  <script src="https://unpkg.com/lucide@latest" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js" defer></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
+
+  <!-- NAVBAR -->
+  <header class="glass-nav sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 py-3 flex items-center justify-between">
+      <!-- Logo -->
+      <a href="#" id="app-logo-link" class="flex items-center gap-3 transition-transform hover:scale-[1.02] cursor-pointer">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </div>
+        <div>
+          <span class="font-bold text-xl tracking-tight font-heading text-slate-900" data-i18n="appTitle">GlobePlanner</span>
+          <span class="hidden md:block text-xs text-slate-500 -mt-1 font-medium" data-i18n="appSubtitle">Kişiselleştirilmiş Dünya Seyahat Rehberi</span>
+        </div>
+      </a>
+
+      <!-- Quick Nav & Language Switcher -->
+      <div class="flex items-center gap-4">
+        <a href="#survival-guide" class="text-xs font-semibold text-slate-600 hover:text-sky-600 hidden sm:flex items-center gap-1.5 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-600"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span data-i18n="guideTitle">Hayatta Kalma Rehberi</span>
+        </a>
+
+        <!-- Language Switcher Pill -->
+        <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+          <button class="lang-btn px-2.5 py-1 rounded-lg transition" data-lang="tr">🇹🇷 TR</button>
+          <button class="lang-btn px-2.5 py-1 rounded-lg transition" data-lang="en">🇬🇧 EN</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO SECTION -->
+  <section class="hero-gradient text-white py-14 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]"></div>
+    
+    <div class="max-w-4xl mx-auto text-center relative z-10">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-semibold text-sky-200 mb-6">
+        <span class="text-amber-300">✨</span>
+        <span data-i18n="heroBadge">✨ 2026 Akıllı Dünya Seyahat Asistanı</span>
+      </div>
+
+      <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight font-heading mb-6 leading-tight" data-i18n="heroTitle">
+        Dünyayı Kendi Tarzına Göre Keşfet
+      </h1>
+
+      <p class="text-base sm:text-lg text-slate-300 mb-8 max-w-2xl mx-auto leading-relaxed" data-i18n="heroDescription">
+        Seyahat etmek istediğin ülkeyi, gün sayını ve ilgi alanlarını seç; sana özel, mantıklı ve yerel sırlarla dolu günlük tatil planını anında hazırlayalım.
+      </p>
+
+      <!-- Active Country Pill Preview in Hero -->
+      <div class="inline-flex items-center gap-3 bg-white/15 backdrop-blur-md border border-white/25 px-5 py-2.5 rounded-2xl text-sm font-bold shadow-lg mb-8">
+        <span class="text-slate-300 text-xs font-normal" data-i18n="selectedCountryBadge">Seçilen Rota:</span>
+        <span id="hero-selected-flag" class="text-2xl">🇹🇷</span>
+        <span id="hero-selected-country" class="text-white text-base font-extrabold">Türkiye</span>
+        <span id="hero-selected-capital" class="text-xs bg-sky-500/30 text-sky-200 px-2 py-0.5 rounded-full border border-sky-400/30">İstanbul</span>
+      </div>
+
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <button id="hero-start-btn" class="w-full sm:w-auto px-8 py-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold text-base shadow-lg shadow-sky-500/30 transition transform hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer">
+          <span data-i18n="startBtn">Planımı Oluşturmaya Başla 🚀</span>
+        </button>
+      </div>
+
+      <div class="mt-10 flex items-center justify-center gap-6 text-xs text-slate-400">
+        <div class="flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-400"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <span data-i18n="heroPill1">Tüm Dünya Ülkeleri</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-400"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span data-i18n="heroPill2">Lojistik Bölge Rotaları</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-400"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          <span data-i18n="heroPill3">İnteraktif Harita & PDF</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAIN WRAPPER -->
+  <main class="flex-grow max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full">
+    
+    <!-- SECTION 1: DESTINATION COUNTRY SELECTOR -->
+    <section id="destination-section" class="card-glass rounded-3xl p-6 sm:p-8 border border-slate-200 mb-8 shadow-sm">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="w-8 h-8 rounded-full bg-sky-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">🌍</span>
+            <h2 class="text-2xl font-bold font-heading text-slate-900" data-i18n="destTitle">Nereye Gitmek İstiyorsun?</h2>
+          </div>
+          <p class="text-slate-500 text-xs sm:text-sm mt-1" data-i18n="destDesc">Seyahat etmek istediğin ülkeyi seç veya arama kutusuna yaz.</p>
+        </div>
+
+        <!-- Live Country Search Filter -->
+        <div class="relative w-full md:w-80">
+          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <input type="text" id="country-search-input" 
+            class="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none transition bg-white" 
+            placeholder="Ülke veya başkent ara... (örn: Avusturya, Hollanda)"
+            data-i18n-placeholder="destSearchPlaceholder">
+        </div>
+      </div>
+
+      <!-- Popular Country Grid -->
+      <div class="mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-500" data-i18n="popularDestinations">Öne Çıkan Popüler Ülkeler</span>
+          <span id="country-results-count" class="text-xs text-sky-600 font-bold"></span>
+        </div>
+
+        <div id="popular-countries-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          <!-- Dynamically populated and maintained by JS -->
+        </div>
+      </div>
+
+      <!-- All Countries Dropdown Select -->
+      <div class="mt-6 pt-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <label for="all-countries-select" class="text-xs font-bold text-slate-700" data-i18n="allCountriesLabel">
+          Tüm Dünya Ülkeleri (<span id="country-count-label">20+</span> Ülke):
+        </label>
+        <select id="all-countries-select" class="px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold bg-white text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none max-w-sm cursor-pointer shadow-sm">
+          <!-- Populated by JS -->
+        </select>
+      </div>
+    </section>
+
+    <!-- SECTION 2: WIZARD QUESTIONNAIRE SECTION -->
+    <div id="wizard-section" class="card-glass rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-sm">
+      
+      <!-- Current Country Banner inside Wizard -->
+      <div id="wizard-country-banner" class="mb-8 p-3.5 bg-gradient-to-r from-sky-50 via-indigo-50 to-sky-50 border border-sky-200 rounded-2xl flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span id="wizard-flag" class="text-2xl">🇹🇷</span>
+          <div>
+            <span class="text-[10px] text-sky-700 font-bold uppercase tracking-wider block" data-i18n="selectedCountryBadge">Seçilen Rota:</span>
+            <strong id="wizard-country-name" class="text-slate-900 text-sm">Türkiye (İstanbul)</strong>
+          </div>
+        </div>
+        <button type="button" id="change-country-btn" class="text-xs text-sky-600 hover:text-sky-800 font-bold px-3 py-1.5 rounded-xl bg-white border border-sky-200 shadow-xs transition">
+          Ülkeyi Değiştir ↑
+        </button>
+      </div>
+
+      <!-- Stepper Indicator -->
+      <div class="flex items-center justify-between max-w-md mx-auto mb-10 relative">
+        <div class="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-slate-200 w-full -z-0"></div>
+        <div id="step-dot-1" class="step-dot active w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm relative z-10">1</div>
+        <div id="step-dot-2" class="step-dot w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm relative z-10">2</div>
+        <div id="step-dot-3" class="step-dot w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm relative z-10">3</div>
+        <div id="step-dot-4" class="step-dot w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm relative z-10">4</div>
+      </div>
+
+      <!-- STEP 1: DURATION -->
+      <div id="step-panel-1">
+        <div class="text-center mb-8">
+          <h2 class="text-2xl sm:text-3xl font-bold font-heading text-slate-900" data-i18n="step1Title">Kaç gün kalacaksın?</h2>
+          <p class="text-slate-500 text-sm mt-1" data-i18n="step1Desc">Seyahatinde geçirmeyi planladığın gün sayısını seç.</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- 1 Day -->
+          <div class="selection-card p-5 rounded-2xl border-2 border-slate-200 bg-white" data-pref="days" data-val="1">
+            <div class="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <h3 class="font-bold text-slate-900" data-i18n="days1">1 Günlük Hızlı Tur</h3>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="days1Sub">Şehrin en can alıcı simgeleri</p>
+          </div>
+
+          <!-- 2 Days -->
+          <div class="selection-card p-5 rounded-2xl border-2 border-slate-200 bg-white" data-pref="days" data-val="2">
+            <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </div>
+            <h3 class="font-bold text-slate-900" data-i18n="days2">2 Günlük Hafta Sonu</h3>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="days2Sub">Kısa ve dinamik kaçamak</p>
+          </div>
+
+          <!-- 3 Days -->
+          <div class="selection-card selected p-5 rounded-2xl border-2 border-slate-200 bg-white" data-pref="days" data-val="3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </div>
+            <div class="flex items-center justify-between">
+              <h3 class="font-bold text-slate-900" data-i18n="days3">3 Günlük İdeal Plan</h3>
+              <span class="text-[10px] uppercase font-extrabold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full" data-i18n="badgePopular">Popüler</span>
+            </div>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="days3Sub">Tarih, manzara ve yerel sokaklar</p>
+          </div>
+
+          <!-- 5 Days -->
+          <div class="selection-card p-5 rounded-2xl border-2 border-slate-200 bg-white" data-pref="days" data-val="5">
+            <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+            </div>
+            <h3 class="font-bold text-slate-900" data-i18n="days5">5 Günlük Kapsamlı</h3>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="days5Sub">Derinlemesine şehir & çevre deneyimi</p>
+          </div>
+
+          <!-- 7 Days -->
+          <div class="selection-card p-5 rounded-2xl border-2 border-slate-200 bg-white" data-pref="days" data-val="7">
+            <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+            </div>
+            <h3 class="font-bold text-slate-900" data-i18n="days7">7 Günlük Dolu Dolu</h3>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="days7Sub">Gizli köşeler & doğa rotaları dahil</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: TRAVELERS -->
+      <div id="step-panel-2" class="hidden">
+        <div class="text-center mb-8">
+          <h2 class="text-2xl sm:text-3xl font-bold font-heading text-slate-900" data-i18n="step2Title">Kiminle seyahat ediyorsun?</h2>
+          <p class="text-slate-500 text-sm mt-1" data-i18n="step2Desc">Rotayı yol arkadaşlarına göre uyarlayalım.</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
+          <!-- Solo -->
+          <div class="selection-card p-6 rounded-2xl border-2 border-slate-200 bg-white flex items-center gap-4" data-pref="travelerType" data-val="solo">
+            <div class="w-12 h-12 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-slate-900" data-i18n="travelerSolo">Tek Başına (Solo)</h3>
+              <p class="text-xs text-slate-500 mt-0.5" data-i18n="travelerSoloSub">Özgür, esnek ve keşif odaklı</p>
+            </div>
+          </div>
+
+          <!-- Couple -->
+          <div class="selection-card selected p-6 rounded-2xl border-2 border-slate-200 bg-white flex items-center gap-4" data-pref="travelerType" data-val="couple">
+            <div class="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-slate-900" data-i18n="travelerCouple">Çift / Romantik</h3>
+              <p class="text-xs text-slate-500 mt-0.5" data-i18n="travelerCoupleSub">Manzaralar, şık kafeler ve gün batımları</p>
+            </div>
+          </div>
+
+          <!-- Family -->
+          <div class="selection-card p-6 rounded-2xl border-2 border-slate-200 bg-white flex items-center gap-4" data-pref="travelerType" data-val="family">
+            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-slate-900" data-i18n="travelerFamily">Aile / Çocuklu</h3>
+              <p class="text-xs text-slate-500 mt-0.5" data-i18n="travelerFamilySub">Rahat erişilebilir ve dinlenme molalı</p>
+            </div>
+          </div>
+
+          <!-- Friends -->
+          <div class="selection-card p-6 rounded-2xl border-2 border-slate-200 bg-white flex items-center gap-4" data-pref="travelerType" data-val="friends">
+            <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-slate-900" data-i18n="travelerFriends">Arkadaş Grubu</h3>
+              <p class="text-xs text-slate-500 mt-0.5" data-i18n="travelerFriendsSub">Canlı sokaklar, lezzetler ve gece hayatı</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3: INTERESTS -->
+      <div id="step-panel-3" class="hidden">
+        <div class="text-center mb-8">
+          <h2 class="text-2xl sm:text-3xl font-bold font-heading text-slate-900" data-i18n="step3Title">Neler seni heyecanlandırır?</h2>
+          <p class="text-slate-500 text-sm mt-1" data-i18n="step3Desc">İlgini çeken en az 1 veya daha fazla kategori seç.</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- History -->
+          <div class="selection-card selected p-5 rounded-2xl border-2 border-slate-200 bg-white" data-pref="interests" data-val="history">
+            <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+            </div>
+            <h3 class="font-bold text-slate-900" data-i18n="catHistory">Tarih, Kaleler & Müzeler</h3>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="catHistoryDesc">Tarihi saraylar, antik yapılar, katedraller</p>
+          </div>
+
+          <!-- Food -->
+          <div class="selection-card selected p-5 rounded-2xl border-2 border-slate-200 bg-white" data-pref="interests" data-val="food">
+            <div class="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="M18 2v6a3 3 0 0 1-3 3 3 3 0 0 1-3-3V2"/><path d="M18 11v9a2 2 0 0 1-2 2h0a2 2 0 0 1-2-2v-9"/><path d="M6 2v20"/><path d="M9 2v6a3 3 0 0 1-3 3v0a3 3 0 0 1-3-3V2"/></svg>
+            </div>
+            <h3 class="font-bold text-slate-900" data-i18n="catFood">Gastronomi & Yerel Lezzetler</h3>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="catFoodDesc">Otantik pazarlar, yerel restoranlar, şarap/kahve</p>
+          </div>
+
+          <!-- Views -->
+          <div class="selection-card selected p-5 rounded-2xl border-2 border-slate-200 bg-white" data-pref="interests" data-val="views">
+            <div class="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>
+            </div>
+            <h3 class="font-bold text-slate-900" data-i18n="catViews">Manzaralar, Nehir & Göller</h3>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="catViewsDesc">Tekne turları, kanyonlar, seyir tepeleri</p>
+          </div>
+
+          <!-- Bazaars -->
+          <div class="selection-card p-5 rounded-2xl border-2 border-slate-200 bg-white" data-pref="interests" data-val="bazaars">
+            <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            </div>
+            <h3 class="font-bold text-slate-900" data-i18n="catBazaars">Alışveriş & Tarihi Pasajlar</h3>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="catBazaarsDesc">Tarihi çarşılar, tasarım sokakları, butikler</p>
+          </div>
+
+          <!-- Art & Bohemian -->
+          <div class="selection-card p-5 rounded-2xl border-2 border-slate-200 bg-white" data-pref="interests" data-val="art">
+            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2Z"/></svg>
+            </div>
+            <h3 class="font-bold text-slate-900" data-i18n="catArt">Bohem Sokaklar & Sanat</h3>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="catArtDesc">Karakteristik mahalleler, sokak sanatı, galeriler</p>
+          </div>
+
+          <!-- Nightlife -->
+          <div class="selection-card p-5 rounded-2xl border-2 border-slate-200 bg-white" data-pref="interests" data-val="nightlife">
+            <div class="w-10 h-10 rounded-xl bg-pink-50 text-pink-600 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="M8 22h8"/><path d="M12 15v7"/><path d="M7 3h10a1 1 0 0 1 1 1v2a6 6 0 0 1-6 6 6 6 0 0 1-6-6V4a1 1 0 0 1 1-1Z"/></svg>
+            </div>
+            <h3 class="font-bold text-slate-900" data-i18n="catNightlife">Kafeler & Gece Hayatı</h3>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="catNightlifeDesc">Canlı barlar, caz kulüpleri, meydanlar</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 4: PACE & BUDGET -->
+      <div id="step-panel-4" class="hidden">
+        <div class="text-center mb-8">
+          <h2 class="text-2xl sm:text-3xl font-bold font-heading text-slate-900" data-i18n="step4Title">Gezi Tempon ve Bütçen</h2>
+          <p class="text-slate-500 text-sm mt-1" data-i18n="step4Desc">Sana en uygun hız ve harcama alışkanlığını belirle.</p>
+        </div>
+
+        <div class="space-y-8 max-w-2xl mx-auto">
+          <!-- Pace -->
+          <div>
+            <label class="block text-sm font-bold text-slate-800 mb-3" data-i18n="paceLabel">Günlük Tempo:</label>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div class="selection-card p-4 rounded-xl border-2 border-slate-200 bg-white text-center cursor-pointer" data-pref="pace" data-val="relaxed">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-amber-500 mx-auto mb-2"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>
+                <div class="font-bold text-sm text-slate-900" data-i18n="paceRelaxedTitle">Sakin</div>
+                <div class="text-[11px] text-slate-500 mt-0.5" data-i18n="paceRelaxedDesc">Günde 2-3 nokta</div>
+              </div>
+              <div class="selection-card selected p-4 rounded-xl border-2 border-slate-200 bg-white text-center cursor-pointer" data-pref="pace" data-val="balanced">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-sky-500 mx-auto mb-2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                <div class="font-bold text-sm text-slate-900" data-i18n="paceBalancedTitle">Dengeli</div>
+                <div class="text-[11px] text-slate-500 mt-0.5" data-i18n="paceBalancedDesc">Günde 4 nokta</div>
+              </div>
+              <div class="selection-card p-4 rounded-xl border-2 border-slate-200 bg-white text-center cursor-pointer" data-pref="pace" data-val="fast">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-rose-500 mx-auto mb-2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+                <div class="font-bold text-sm text-slate-900" data-i18n="paceFastTitle">Yoğun</div>
+                <div class="text-[11px] text-slate-500 mt-0.5" data-i18n="paceFastDesc">Günde 5-6 nokta</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Budget -->
+          <div>
+            <label class="block text-sm font-bold text-slate-800 mb-3" data-i18n="budgetLabel">Bütçe Tercihi:</label>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div class="selection-card p-4 rounded-xl border-2 border-slate-200 bg-white text-center cursor-pointer" data-pref="budget" data-val="economy">
+                <div class="text-lg font-bold text-emerald-600 mb-1">₺</div>
+                <div class="font-bold text-sm text-slate-900" data-i18n="budgetEconomyTitle">Ekonomik</div>
+                <div class="text-[11px] text-slate-500 mt-0.5" data-i18n="budgetEconomyDesc">Toplu taşıma & sokak lezzeti</div>
+              </div>
+              <div class="selection-card selected p-4 rounded-xl border-2 border-slate-200 bg-white text-center cursor-pointer" data-pref="budget" data-val="moderate">
+                <div class="text-lg font-bold text-sky-600 mb-1">₺₺</div>
+                <div class="font-bold text-sm text-slate-900" data-i18n="budgetModerateTitle">Dengeli</div>
+                <div class="text-[11px] text-slate-500 mt-0.5" data-i18n="budgetModerateDesc">Müzeler & şık mekanlar</div>
+              </div>
+              <div class="selection-card p-4 rounded-xl border-2 border-slate-200 bg-white text-center cursor-pointer" data-pref="budget" data-val="luxury">
+                <div class="text-lg font-bold text-purple-600 mb-1">₺₺₺</div>
+                <div class="font-bold text-sm text-slate-900" data-i18n="budgetLuxuryTitle">Konfor / Lüks</div>
+                <div class="text-[11px] text-slate-500 mt-0.5" data-i18n="budgetLuxuryDesc">Özel turlar & lüks restoranlar</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WIZARD CONTROLS -->
+      <div class="mt-10 pt-6 border-t border-slate-200 flex items-center justify-between">
+        <button id="btn-back" class="invisible px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-sm hover:bg-slate-100 transition flex items-center gap-2 cursor-pointer">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          <span data-i18n="btnBack">Geri</span>
+        </button>
+
+        <button id="btn-next" class="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm shadow-md shadow-sky-500/20 transition flex items-center gap-2 cursor-pointer">
+          <span data-i18n="btnNext">Devam Et</span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+
+        <button id="btn-generate" class="hidden px-7 py-3 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold text-base shadow-lg shadow-sky-500/30 transition transform hover:-translate-y-0.5 flex items-center gap-2 cursor-pointer">
+          <span>✨</span>
+          <span data-i18n="btnGenerate">Akıllı Tatil Planımı Çıkar ✨</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- SECTION 3: GENERATED ITINERARY VIEW (Hidden by default) -->
+    <div id="itinerary-section" class="hidden space-y-8">
+      
+      <!-- Top Actions Bar -->
+      <div id="actions-toolbar" class="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+        <div>
+          <div class="flex items-center gap-2">
+            <span id="plan-country-flag" class="text-2xl">🇦🇹</span>
+            <h2 class="text-xl font-bold font-heading text-slate-900" data-i18n="planHeading">Kişiselleştirilmiş Tatil Planın</h2>
+          </div>
+          <p class="text-xs text-slate-500" data-i18n="planSubheading">Lojistik olarak ardışık bölgeler seçildi.</p>
+        </div>
+
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+          <button id="btn-edit-pref" class="flex-1 sm:flex-none px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+            <span data-i18n="btnEditPreferences">Seçimleri Değiştir</span>
+          </button>
+          <button id="btn-print" class="flex-1 sm:flex-none px-3.5 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            <span data-i18n="btnPrint">Yazdır / PDF</span>
+          </button>
+          <button id="btn-share" class="flex-1 sm:flex-none px-3.5 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            <span data-i18n="btnShare">WhatsApp</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Day Tabs Navigation -->
+      <div id="day-tabs" class="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+        <!-- Dynamically injected tabs -->
+      </div>
+
+      <!-- Main Itinerary Content + Sticky Map -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        
+        <!-- Stops List (7 Cols) -->
+        <div class="lg:col-span-7" id="day-content">
+          <!-- Dynamically injected stops -->
+        </div>
+
+        <!-- Sticky Map & Route Details (5 Cols) -->
+        <div class="lg:col-span-5 sticky top-24 space-y-4">
+          <div class="card-glass rounded-2xl p-4 border border-slate-200">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-sky-600"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                <h4 class="font-bold text-sm text-slate-900" data-i18n="mapHeading">Günün Rota Haritası</h4>
+              </div>
+              <span class="text-[10px] text-slate-500 font-medium">OpenStreetMap</span>
+            </div>
+            
+            <!-- Map Container -->
+            <div id="map"></div>
+
+            <p class="text-[11px] text-slate-500 mt-3 text-center" data-i18n="mapLegend">
+              Noktalar lojistik sıraya göre numaralandırılmıştır.
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- SECTION 4: SURVIVAL GUIDE SECTION -->
+    <section id="survival-guide" class="mt-20 pt-10 border-t border-slate-200">
+      <div class="text-center max-w-2xl mx-auto mb-10">
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold mb-2">
+          <span>🛡️</span>
+          <span data-i18n="guideBadge">Yerel Hayatta Kalma Tüyoları</span>
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-bold font-heading text-slate-900" data-i18n="guideTitle">Seyahat & Hayatta Kalma Rehberi</h2>
+        <p class="text-slate-500 text-sm mt-1" data-i18n="guideSub">Seçtiğin ülke için mutlaka bilmen gereken altın kurallar:</p>
+      </div>
+
+      <div id="survival-guide-cards" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Injected via JavaScript based on chosen country -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="bg-white border-t border-slate-200 py-8 mt-16 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-2 cursor-pointer transition-transform hover:scale-[1.02]" id="footer-logo-link">
+        <div class="w-6 h-6 rounded-lg bg-sky-600 text-white flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </div>
+        <span class="font-bold text-slate-800">GlobePlanner</span>
+        <span>• 2026</span>
+      </div>
+      <p data-i18n="footerText">Dünyayı bir turist gibi değil, şehri bilen biri gibi keşfedin.</p>
+      <div>
+        <span data-i18n="builtWith">Geliştirildi: Antigravity AI</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts with cache-busting -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/translations.js?v=4.0"></script>
+  <script src="js/data.js?v=4.0"></script>
+  <script src="js/places-core.js?v=4.0"></script>
+  <script src="js/places-1.js?v=4.0"></script>
+  <script src="js/places-2.js?v=4.0"></script>
+  <script src="js/places-3.js?v=4.0"></script>
+  <script src="js/places-4.js?v=4.0"></script>
+  <script src="js/places-5.js?v=4.0"></script>
+  <script src="js/planner.js?v=4.0"></script>
+  <script src="js/app.js?v=4.0"></script>
+</body>
+</html>
