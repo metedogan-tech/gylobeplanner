@@ -140,9 +140,9 @@ function renderPopularCountries(filterText = "") {
 
   if (countriesToShow.length === 0) {
     container.innerHTML = `
-      <div class="col-span-full py-6 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-        <p class="font-bold text-slate-700 mb-1">${isTr ? 'Aradığınız ülke listede bulunamadı.' : 'No matching country found.'}</p>
-        <p class="text-[11px] text-slate-400">${isTr ? `Aşağıdaki açılır menüden tüm ${getCountryCountLabel()} ülke arasından seçim yapabilirsiniz.` : `Please select from the comprehensive ${getCountryCountLabel()} country dropdown list below.`}</p>
+      <div class="country-empty">
+        <strong>${isTr ? 'Bu isimde bir ülke yok.' : 'No country matches that name.'}</strong>
+        ${isTr ? `Aşağıdaki listeden ${getCountryCountLabel()} ülkenin hepsine bakabilirsin.` : `You can browse all ${getCountryCountLabel()} countries in the list below.`}
       </div>
     `;
     return;
@@ -151,26 +151,20 @@ function renderPopularCountries(filterText = "") {
   countriesToShow.forEach(c => {
     const isSelected = c.id === userState.country;
     const name = isTr ? c.nameTr : c.nameEn;
-    
-    const card = document.createElement("div");
-    card.className = `selection-card p-3 rounded-2xl border-2 flex flex-col items-center text-center transition cursor-pointer relative ${
-      isSelected 
-        ? 'selected border-sky-600 bg-sky-50 shadow-md ring-2 ring-sky-500/20' 
-        : 'border-slate-200 bg-white hover:border-sky-300 hover:shadow-xs'
-    }`;
+
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = `country-tile${isSelected ? " is-selected" : ""}`;
     card.dataset.countryId = c.id;
-
+    card.setAttribute("aria-pressed", isSelected ? "true" : "false");
     card.innerHTML = `
-      <span class="text-3xl mb-1">${c.flag}</span>
-      <strong class="text-xs ${isSelected ? 'text-sky-950 font-extrabold' : 'text-slate-900 font-bold'} block truncate w-full">${name}</strong>
-      <span class="text-[10px] text-slate-500 block truncate w-full mt-0.5">${c.capital}</span>
-      ${isSelected ? `<span class="mt-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-sky-600 text-white">${isTr ? '✓ Seçildi' : '✓ Selected'}</span>` : ''}
+      <span class="flag" aria-hidden="true">${c.flag}</span>
+      <span class="min-w-0">
+        <span class="name">${name}</span>
+        <span class="cap">${c.capital}</span>
+      </span>
     `;
-
-    card.addEventListener("click", () => {
-      selectCountry(c.id);
-    });
-
+    card.addEventListener("click", () => selectCountry(c.id));
     container.appendChild(card);
   });
 }
@@ -235,8 +229,9 @@ function selectCountry(countryId) {
   if (wizardFlag) wizardFlag.textContent = country.flag;
   if (wizardName) wizardName.textContent = `${name} (${country.capital})`;
 
-  // Re-render Survival Guide for this country
+  // Re-render Survival Guide and the hero sample line for this country
   renderSurvivalGuide();
+  renderHeroLine();
 
   // If map exists and plan was already generated, re-center map
   if (mapInstance && currentItinerary) {
@@ -288,19 +283,16 @@ function renderSurvivalGuide() {
   tips.forEach(t => {
     const title = isTr ? t.titleTr : t.titleEn;
     const desc = isTr ? t.descTr : t.descEn;
-
-    const card = document.createElement("div");
-    card.className = "card-glass p-6 rounded-2xl border border-slate-200 flex items-start gap-4 transition hover:shadow-md";
-    card.innerHTML = `
-      <div class="w-12 h-12 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
-        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-      </div>
+    const item = document.createElement("div");
+    item.className = "guide-item";
+    item.innerHTML = `
+      <span class="guide-pin" aria-hidden="true"></span>
       <div>
-        <h4 class="font-bold text-slate-900 text-base mb-1">${title}</h4>
-        <p class="text-xs text-slate-600 leading-relaxed">${desc}</p>
+        <h4>${title}</h4>
+        <p>${desc}</p>
       </div>
     `;
-    container.appendChild(card);
+    container.appendChild(item);
   });
 
   safeCreateIcons();
@@ -330,14 +322,10 @@ function setLanguage(lang) {
 
   // Update language toggle buttons UI
   document.querySelectorAll(".lang-btn").forEach(btn => {
-    if (btn.dataset.lang === lang) {
-      btn.classList.add("bg-sky-600", "text-white");
-      btn.classList.remove("text-slate-600", "hover:bg-slate-100");
-    } else {
-      btn.classList.remove("bg-sky-600", "text-white");
-      btn.classList.add("text-slate-600", "hover:bg-slate-100");
-    }
+    btn.classList.toggle("is-active", btn.dataset.lang === lang);
+    btn.setAttribute("aria-pressed", btn.dataset.lang === lang ? "true" : "false");
   });
+  updateHeroFacts();
 
   // Refresh country lists in new language
   populateAllCountriesSelect();
@@ -425,10 +413,16 @@ function initWizardNavigation() {
 
   if (heroStartBtn) {
     heroStartBtn.addEventListener("click", () => {
-      const destSection = document.getElementById("destination-section");
-      if (destSection) {
-        destSection.scrollIntoView({ behavior: "smooth" });
-      }
+      const target = document.getElementById(currentItinerary ? "itinerary-section" : "wizard-section");
+      if (target) target.scrollIntoView({ behavior: "smooth" });
+    });
+  }
+  const heroChange = document.getElementById("hero-change-country");
+  if (heroChange) {
+    heroChange.addEventListener("click", () => {
+      document.getElementById("destination-section").scrollIntoView({ behavior: "smooth" });
+      const input = document.getElementById("country-search-input");
+      if (input) setTimeout(() => input.focus({ preventScroll: true }), 400);
     });
   }
 
@@ -465,13 +459,8 @@ function goToStep(step) {
 
     const dot = document.getElementById(`step-dot-${i}`);
     if (dot) {
-      if (i < step) {
-        dot.className = "step-dot completed w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm";
-      } else if (i === step) {
-        dot.className = "step-dot active w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm";
-      } else {
-        dot.className = "step-dot w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm";
-      }
+      dot.className = "step-dot" + (i < step ? " completed" : i === step ? " active" : "");
+      if (i === step) dot.setAttribute("aria-current", "step"); else dot.removeAttribute("aria-current");
     }
   }
 
@@ -522,6 +511,41 @@ function generateAndDisplayPlan() {
   planSection.scrollIntoView({ behavior: "smooth" });
 }
 
+const SLOT_LABELS = {
+  morning: { tr: "Sabah", en: "Morning" },
+  afternoon: { tr: "Öğleden sonra", en: "Afternoon" },
+  sunset: { tr: "Gün batımı", en: "Sunset" },
+  evening: { tr: "Akşam", en: "Evening" }
+};
+const CATEGORY_LABELS = {
+  history: { tr: "Tarih", en: "History" },
+  food: { tr: "Lezzet", en: "Food" },
+  views: { tr: "Manzara", en: "Views" },
+  bazaars: { tr: "Çarşı", en: "Shopping" },
+  art: { tr: "Sanat", en: "Art" },
+  nightlife: { tr: "Gece hayatı", en: "Nightlife" }
+};
+
+function budgetLabel(p, isTr) {
+  const t = p.budgetTier || [];
+  if (t.length === 1 && t[0] === "economy") return isTr ? "Ücretsiz / ucuz" : "Free / cheap";
+  if (t.includes("economy")) return isTr ? "Uygun fiyatlı" : "Affordable";
+  if (t.length === 1 && t[0] === "luxury") return isTr ? "Lüks" : "Luxury";
+  return isTr ? "Orta bütçe" : "Mid-range";
+}
+
+function escapeHtml(str) {
+  return String(str == null ? "" : str).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+
+function photoMarkup(p, name) {
+  const wikiAttr = encodeURIComponent(JSON.stringify(p.wiki || p.nameEn || ""));
+  return `
+    <span class="photo-fallback" aria-hidden="true">${escapeHtml(name)}</span>
+    <img data-wiki="${wikiAttr}" alt="${escapeHtml(name)}" referrerpolicy="no-referrer" class="place-photo opacity-0 transition-opacity duration-500">
+  `;
+}
+
 function renderItinerary(itinerary) {
   const tabsContainer = document.getElementById("day-tabs");
   const contentContainer = document.getElementById("day-content");
@@ -530,204 +554,144 @@ function renderItinerary(itinerary) {
 
   const isTr = currentLanguage === "tr";
   const country = itinerary.country;
+  const countryName = country ? (isTr ? country.nameTr : country.nameEn) : "";
 
-  // Update Plan Flag in Actions Bar
   const planFlag = document.getElementById("plan-country-flag");
-  if (planFlag && country) {
-    planFlag.textContent = country.flag;
+  if (planFlag && country) planFlag.textContent = country.flag;
+  const summary = document.getElementById("plan-summary");
+  if (summary) {
+    const n = itinerary.days.length;
+    summary.textContent = isTr
+      ? `${countryName}, ${n} gün, ${itinerary.totalStops} durak. Her gün tek bir bölgede.`
+      : `${countryName}, ${n} days, ${itinerary.totalStops} stops. Each day stays in one area.`;
   }
 
-  // Build Day Tabs
+  // Day tabs: each day is a line with its own colour
   itinerary.days.forEach((day, idx) => {
     const tab = document.createElement("button");
     const isActive = idx === activeDayIndex;
-    tab.className = `px-5 py-3 rounded-xl font-bold transition-all text-sm flex items-center gap-2 cursor-pointer ${
-      isActive
-        ? "bg-sky-600 text-white shadow-md shadow-sky-200"
-        : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
-    }`;
-
-    tab.innerHTML = `
-      <span>${isTr ? `${day.dayNumber}. Gün` : `Day ${day.dayNumber}`}</span>
-      <span class="text-xs px-2 py-0.5 rounded-full ${isActive ? 'bg-sky-700 text-sky-100' : 'bg-slate-100 text-slate-600'}">${day.neighborhood}</span>
-    `;
-
+    tab.type = "button";
+    tab.className = "day-tab";
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-selected", isActive ? "true" : "false");
+    tab.style.setProperty("--day", day.color || "#2346D8");
+    tab.innerHTML = `<span class="line-badge">${day.dayNumber}</span><span class="day-tab-name">${escapeHtml(day.neighborhood)}</span>`;
     tab.addEventListener("click", () => {
       activeDayIndex = idx;
       renderItinerary(itinerary);
     });
-
     tabsContainer.appendChild(tab);
   });
 
-  // Current Active Day
   const activeDay = itinerary.days[activeDayIndex];
   if (!activeDay) return;
+  contentContainer.style.setProperty("--day", activeDay.color || "#2346D8");
 
-  // Render Day Summary Banner
-  const banner = document.createElement("div");
-  banner.className = "bg-gradient-to-r from-slate-900 via-sky-950 to-slate-900 text-white rounded-2xl p-6 mb-8 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4";
-  banner.innerHTML = `
+  const dayTitle = (isTr ? activeDay.titleTr : activeDay.titleEn).replace(/^(\d+\. Gün|Day \d+):\s*/, "");
+  const header = document.createElement("div");
+  header.className = "day-header";
+  header.innerHTML = `
     <div>
-      <span class="inline-block px-3 py-1 bg-sky-500/20 text-sky-300 border border-sky-400/30 rounded-full text-xs font-semibold mb-2">
-        ${country ? country.flag : '📍'} ${activeDay.neighborhood}
-      </span>
-      <h3 class="text-2xl font-bold font-heading">${isTr ? activeDay.titleTr : activeDay.titleEn}</h3>
-      <p class="text-slate-300 text-sm mt-1">
-        ${isTr ? 'Gereksiz trafikten kaçınmak için birbiriyle ardışık ve mantıklı duraklar seçildi.' : 'Clustered sequentially to avoid traffic and maximize discovery.'}
-      </p>
+      <h3>${isTr ? `${activeDay.dayNumber}. gün` : `Day ${activeDay.dayNumber}`}: ${escapeHtml(dayTitle)}</h3>
+      <p class="area">${escapeHtml(activeDay.neighborhood)}</p>
     </div>
-    <div class="flex items-center gap-4 bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/10 text-center">
-      <div>
-        <div class="text-lg font-bold text-sky-300">${activeDay.stats.stopsCount}</div>
-        <div class="text-xs text-slate-300">${isTr ? 'Durak' : 'Stops'}</div>
-      </div>
-      <div class="h-8 w-px bg-white/20"></div>
-      <div>
-        <div class="text-lg font-bold text-emerald-300">~${activeDay.stats.walkingKm} km</div>
-        <div class="text-xs text-slate-300">${isTr ? 'Yürüme' : 'Walking'}</div>
-      </div>
-      <div class="h-8 w-px bg-white/20"></div>
-      <div>
-        <div class="text-lg font-bold text-amber-300">~${activeDay.stats.estimatedHours} h</div>
-        <div class="text-xs text-slate-300">${isTr ? 'Tahmini Süre' : 'Duration'}</div>
-      </div>
+    <div class="day-stats">
+      <div><strong>${activeDay.stats.stopsCount}</strong><span>${isTr ? "durak" : "stops"}</span></div>
+      <div><strong>~${activeDay.stats.walkingKm} km</strong><span>${isTr ? "yürüyüş" : "walking"}</span></div>
+      <div><strong>~${activeDay.stats.estimatedHours} sa</strong><span>${isTr ? "toplam süre" : "in total"}</span></div>
     </div>
   `;
-  contentContainer.appendChild(banner);
+  contentContainer.appendChild(header);
 
-  // Render Stops Timeline
-  const timeline = document.createElement("div");
-  timeline.className = "space-y-6";
+  const line = document.createElement("div");
+  line.className = "stops";
 
   activeDay.stops.forEach((stop, idx) => {
     const p = stop.place;
     const name = isTr ? p.nameTr : p.nameEn;
-    const desc = isTr ? p.descTr : p.descEn;
-    const insiderTip = isTr ? p.insiderTipTr : p.insiderTipEn;
-    const transitTip = isTr ? p.transitTr : p.transitEn;
+    const slot = SLOT_LABELS[stop.timeSlot] || SLOT_LABELS.morning;
+    const tags = (p.category || []).map(cat => {
+      const m = CATEGORY_LABELS[cat];
+      return m ? `<span class="tag">${isTr ? m.tr : m.en}</span>` : "";
+    }).join("");
 
-    const timeLabels = {
-      morning: { tr: "Sabah", en: "Morning", color: "text-amber-500 bg-amber-50 border-amber-200", icon: "☀️" },
-      afternoon: { tr: "Öğle", en: "Afternoon", color: "text-sky-500 bg-sky-50 border-sky-200", icon: "⛅" },
-      sunset: { tr: "Gün Batımı", en: "Golden Hour", color: "text-orange-500 bg-orange-50 border-orange-200", icon: "🌅" },
-      evening: { tr: "Akşam", en: "Evening", color: "text-indigo-500 bg-indigo-50 border-indigo-200", icon: "🌙" }
-    };
-    const tBadge = timeLabels[stop.timeSlot] || timeLabels.morning;
-
-    // Photo of this exact place (resolved from its Wikipedia article after render)
-    const wikiAttr = encodeURIComponent(JSON.stringify(p.wiki || p.nameEn || ""));
-
-    // Category badges
-    const catBadgesHtml = (p.category || []).map(cat => {
-      const cMeta = {
-        history: { tr: "Tarih", en: "History", color: "bg-amber-100 text-amber-800 border-amber-200" },
-        food: { tr: "Gastronomi", en: "Food", color: "bg-orange-100 text-orange-800 border-orange-200" },
-        views: { tr: "Manzara", en: "Views", color: "bg-sky-100 text-sky-800 border-sky-200" },
-        bazaars: { tr: "Alışveriş", en: "Bazaar", color: "bg-purple-100 text-purple-800 border-purple-200" },
-        art: { tr: "Sanat & Bohem", en: "Art & Bohemian", color: "bg-emerald-100 text-emerald-800 border-emerald-200" },
-        nightlife: { tr: "Gece Hayatı", en: "Nightlife", color: "bg-pink-100 text-pink-800 border-pink-200" }
-      }[cat] || { tr: cat, en: cat, color: "bg-slate-100 text-slate-700 border-slate-200" };
-      return `<span class="px-2 py-0.5 rounded text-[11px] font-semibold border ${cMeta.color}">${isTr ? cMeta.tr : cMeta.en}</span>`;
-    }).join(" ");
-
-    // Budget badge
-    const isEconomyOnly = p.budgetTier && p.budgetTier.length === 1 && p.budgetTier.includes("economy");
-    const budgetBadgeHtml = isEconomyOnly
-      ? `<span class="px-2 py-0.5 rounded text-[11px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200">₺ ${isTr ? 'Ekonomik / Ücretsiz' : 'Free / Budget'}</span>`
-      : (p.budgetTier && p.budgetTier.includes("economy")
-          ? `<span class="px-2 py-0.5 rounded text-[11px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200">₺ ${isTr ? 'Ekonomik' : 'Budget Friendly'}</span>`
-          : (p.budgetTier && p.budgetTier.includes("luxury")
-              ? `<span class="px-2 py-0.5 rounded text-[11px] font-bold border bg-purple-50 text-purple-700 border-purple-200">₺₺₺ ${isTr ? 'Lüks' : 'Luxury'}</span>`
-              : `<span class="px-2 py-0.5 rounded text-[11px] font-bold border bg-sky-50 text-sky-700 border-sky-200">₺₺ ${isTr ? 'Dengeli' : 'Moderate'}</span>`));
-
-    const stopCard = document.createElement("div");
-    stopCard.className = "card-glass rounded-2xl overflow-hidden border border-slate-200/80 transition hover:shadow-lg";
-
-    stopCard.innerHTML = `
-      <div class="flex flex-col md:flex-row">
-        <!-- Photo -->
-        <div class="md:w-1/3 relative min-h-[200px] md:min-h-auto overflow-hidden">
-          <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-sky-100 via-slate-100 to-indigo-100 text-slate-500 p-4 text-center">
-            <span class="text-3xl">📍</span>
-            <span class="text-xs font-semibold leading-snug">${name}</span>
+    const el = document.createElement("div");
+    el.className = "stop";
+    el.innerHTML = `
+      <span class="stop-node" aria-hidden="true">${idx + 1}</span>
+      <article class="stop-card">
+        <div class="stop-photo">${photoMarkup(p, name)}</div>
+        <div class="stop-body">
+          <div class="stop-meta">
+            <span class="slot">${isTr ? slot.tr : slot.en}</span>
+            <span>${isTr ? `yaklaşık ${p.durationHours} saat` : `about ${p.durationHours} h`}</span>
           </div>
-          <img data-wiki="${wikiAttr}" alt="${name}" referrerpolicy="no-referrer" class="place-photo relative w-full h-full object-cover min-h-[220px] opacity-0 transition-opacity duration-500">
-          <div class="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border backdrop-blur-md bg-white/90 ${tBadge.color}">
-            <span>${tBadge.icon}</span>
-            <span>${isTr ? tBadge.tr : tBadge.en}</span>
-          </div>
-          <div class="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm text-white px-2 py-0.5 rounded text-xs">
-            ${p.durationHours} ${isTr ? 'saat' : 'hours'}
-          </div>
+          <h4 class="stop-title">${escapeHtml(name)}</h4>
+          <p class="stop-desc">${escapeHtml(isTr ? p.descTr : p.descEn)}</p>
+          <div class="tags">${tags}<span class="tag tag-budget">${budgetLabel(p, isTr)}</span></div>
+          <p class="tip"><strong>${isTr ? "İpucu:" : "Tip:"}</strong> ${escapeHtml(isTr ? p.insiderTipTr : p.insiderTipEn)}</p>
+          <p class="how"><strong>${isTr ? "Ulaşım:" : "Getting there:"}</strong> ${escapeHtml(isTr ? p.transitTr : p.transitEn)}</p>
         </div>
-
-        <!-- Content -->
-        <div class="md:w-2/3 p-6 flex flex-col justify-between">
-          <div>
-            <div class="flex items-start justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <span class="w-7 h-7 rounded-full bg-sky-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
-                  ${idx + 1}
-                </span>
-                <div>
-                  <h4 class="text-xl font-bold text-slate-900">${name}</h4>
-                  <div class="flex flex-wrap items-center gap-1.5 mt-1.5">${budgetBadgeHtml} ${catBadgesHtml}</div>
-                </div>
-              </div>
-            </div>
-            
-            <p class="text-slate-600 text-sm mt-3 leading-relaxed">${desc}</p>
-
-            <!-- Insider Tip Box -->
-            <div class="mt-4 p-3.5 rounded-xl bg-amber-50/80 border border-amber-200/60 flex items-start gap-3">
-              <span class="text-amber-600 text-lg shrink-0 mt-0.5">💡</span>
-              <div>
-                <span class="font-bold text-xs uppercase tracking-wider text-amber-900 block mb-0.5">
-                  ${isTr ? 'Yerel İpucu' : 'Insider Tip'}
-                </span>
-                <p class="text-xs text-amber-800 leading-snug">${insiderTip}</p>
-              </div>
-            </div>
-
-            <!-- Transit Tip -->
-            <div class="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-3">
-              <span class="text-sky-600 text-sm shrink-0 mt-0.5">🧭</span>
-              <div class="text-xs text-slate-700">
-                <strong class="text-slate-900">${isTr ? 'Ulaşım:' : 'Transit:'}</strong> ${transitTip}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      </article>
     `;
+    line.appendChild(el);
 
-    timeline.appendChild(stopCard);
-
-    // Transit Connector to next stop
     if (stop.transitToNext) {
-      const transitBox = document.createElement("div");
-      transitBox.className = "flex items-center gap-3 py-1.5 px-4 my-2 text-xs font-medium text-slate-500 bg-sky-50/60 border border-dashed border-sky-200 rounded-xl";
-      transitBox.innerHTML = `
-        <div class="w-6 h-6 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center shrink-0 font-bold">
-          ↓
-        </div>
-        <span>${isTr ? stop.transitToNext.tr : stop.transitToNext.en}</span>
-      `;
-      timeline.appendChild(transitBox);
+      const leg = document.createElement("div");
+      leg.className = "leg";
+      leg.innerHTML = `<p>${escapeHtml(isTr ? stop.transitToNext.tr : stop.transitToNext.en)}</p>`;
+      line.appendChild(leg);
     }
   });
 
-  contentContainer.appendChild(timeline);
-  hydratePlaceImages(timeline);
+  contentContainer.appendChild(line);
+  hydratePlaceImages(line);
+  updateMap(activeDay.stops, country, activeDay.color);
+}
 
-  // Update Interactive Map for this Day
-  updateMap(activeDay.stops, country);
-  safeCreateIcons();
+// Hero: a live sample of day 1 for the selected country
+function renderHeroLine() {
+  const list = document.getElementById("hero-line-stops");
+  if (!list) return;
+  const isTr = currentLanguage === "tr";
+  let plan;
+  try {
+    plan = planner.generateItinerary({ country: userState.country, days: 1, travelerType: "couple", interests: ["history", "food", "views", "art"], pace: "balanced", budget: "moderate" });
+  } catch (e) { return; }
+  const day = plan && plan.days[0];
+  if (!day) return;
+  const box = list.closest(".hero-line");
+  if (box) box.style.setProperty("--day", day.color || "#2346D8");
+  const title = document.getElementById("hero-line-title");
+  if (title) title.textContent = day.neighborhood;
+
+  list.innerHTML = day.stops.map(s => {
+    const name = isTr ? s.place.nameTr : s.place.nameEn;
+    const slot = SLOT_LABELS[s.timeSlot] || SLOT_LABELS.morning;
+    const wikiAttr = encodeURIComponent(JSON.stringify(s.place.wiki || s.place.nameEn || ""));
+    return `
+      <li class="hero-stop">
+        <span class="station" aria-hidden="true"></span>
+        <span class="hero-thumb"><img data-wiki="${wikiAttr}" alt="" referrerpolicy="no-referrer" class="place-photo opacity-0 transition-opacity duration-500"></span>
+        <span><span class="hero-stop-name">${escapeHtml(name)}</span><br><span class="hero-stop-time">${isTr ? slot.tr : slot.en}</span></span>
+      </li>`;
+  }).join("");
+  hydratePlaceImages(list);
+}
+
+function updateHeroFacts() {
+  const c = document.getElementById("fact-countries");
+  if (c) c.textContent = getCountryCountLabel();
+  const p = document.getElementById("fact-places");
+  if (p) {
+    const total = Object.values(CURATED_DESTINATIONS).reduce((a, d) => a + d.places.length, 0);
+    p.textContent = (Math.floor(total / 50) * 50) + "+";
+  }
 }
 
 // Leaflet Map Controller
-function updateMap(stops, country) {
+function updateMap(stops, country, lineColor) {
+  const color = lineColor || "#2346D8";
   const mapElement = document.getElementById("map");
   if (!mapElement || typeof L === "undefined") return;
 
@@ -770,16 +734,16 @@ function updateMap(stops, country) {
     // Custom HTML Pin Marker
     const icon = L.divIcon({
       className: "custom-pin-container",
-      html: `<div class="custom-pin" style="background-color: #0284c7;">${index + 1}</div>`,
+      html: `<div class="custom-pin" style="border-color: ${color};">${index + 1}</div>`,
       iconSize: [32, 32],
       iconAnchor: [16, 16]
     });
 
     const marker = L.marker([p.lat, p.lng], { icon: icon }).addTo(mapInstance);
     marker.bindPopup(`
-      <div class="p-2 max-w-[200px]">
-        <strong class="text-sm block text-slate-900">${index + 1}. ${name}</strong>
-        <p class="text-xs text-slate-600 mt-1 line-clamp-2">${desc}</p>
+      <div style="max-width:220px">
+        <strong style="display:block;font-weight:800">${index + 1}. ${escapeHtml(name)}</strong>
+        <span style="color:#5B6478;font-size:12px">${escapeHtml(desc)}</span>
       </div>
     `);
 
@@ -789,10 +753,9 @@ function updateMap(stops, country) {
   // Polyline connecting the stops
   if (latLngs.length > 1) {
     routePolyline = L.polyline(latLngs, {
-      color: "#0284c7",
-      weight: 4,
-      dashArray: "6, 8",
-      opacity: 0.8
+      color: color,
+      weight: 6,
+      opacity: 0.9
     }).addTo(mapInstance);
 
     mapInstance.fitBounds(L.latLngBounds(latLngs), { padding: [40, 40] });
