@@ -124,6 +124,7 @@ const translations = {
     stepLabel3: "İlgi alanları",
     stepLabel4: "Tempo ve bütçe",
     dayUnit: "gün",
+    dayUnitOne: "gün",
     photoCredit: "Fotoğraflar: Wikipedia ve Wikimedia Commons"
   },
 
@@ -251,6 +252,7 @@ const translations = {
     stepLabel3: "Interests",
     stepLabel4: "Pace and budget",
     dayUnit: "days",
+    dayUnitOne: "day",
     photoCredit: "Photos: Wikipedia and Wikimedia Commons"
   }
 };
