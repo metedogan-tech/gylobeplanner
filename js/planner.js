@@ -170,6 +170,7 @@ class UniversalTripPlanner {
         dayNumber: dayIndex + 1,
         countryName: countryInfo.nameTr,
         zoneKey: dayZoneKey,
+        regionId: dayRegion,
         titleTr: dayTitle.tr,
         titleEn: dayTitle.en,
         neighborhood: dayZoneMeta.primaryNeighborhood || countryInfo.capital,

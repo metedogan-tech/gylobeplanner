@@ -10,7 +10,13 @@ const userState = {
   travelerType: "couple",
   interests: ["history", "food", "views"],
   pace: "balanced",
-  budget: "moderate"
+  budget: "moderate",
+  startDate: (() => {
+    try {
+      const v = localStorage.getItem("gp_start_date") || "";
+      return v && v >= new Date().toISOString().slice(0, 10) ? v : "";
+    } catch (e) { return ""; }
+  })()
 };
 
 let currentItinerary = null;
@@ -646,7 +652,81 @@ function renderItinerary(itinerary) {
 
   contentContainer.appendChild(line);
   hydratePlaceImages(line);
+  renderStayCard(itinerary, contentContainer);
   updateMap(activeDay.stops, country, activeDay.color);
+}
+
+// "Where to stay" for the active day: links to booking sites, pre-filled
+function renderStayCard(itinerary, container) {
+  if (typeof getStayForDay !== "function") return;
+  const stay = getStayForDay(itinerary, activeDayIndex);
+  if (!stay) return;
+  const isTr = currentLanguage === "tr";
+  const links = buildStayLinks(stay, userState, currentLanguage);
+
+  const range = stay.firstDay === stay.lastDay
+    ? (isTr ? `${stay.firstDay}. gün` : `day ${stay.firstDay}`)
+    : (isTr ? `${stay.firstDay}–${stay.lastDay}. günler` : `days ${stay.firstDay}–${stay.lastDay}`);
+  const guests = isTr
+    ? `${links.adults} yetişkin, ${links.rooms} oda`
+    : `${links.adults} adult${links.adults > 1 ? "s" : ""}, ${links.rooms} room${links.rooms > 1 ? "s" : ""}`;
+  const budgetNote = {
+    economy: isTr ? "Booking'de sonuçlar en ucuzdan başlayarak sıralanır." : "Booking results are sorted cheapest first.",
+    moderate: isTr ? "Booking'de 8 ve üzeri puanlı yerler gösterilir." : "Booking shows places rated 8+.",
+    luxury: isTr ? "Booking'de 4 ve 5 yıldızlı oteller gösterilir." : "Booking shows 4- and 5-star hotels."
+  }[userState.budget] || "";
+
+  let lead;
+  if (stay.isDayTrip) {
+    lead = isTr
+      ? `Bu gün genelde günübirlik gezilir; geceyi önceki gün kaldığın yerde geçirebilirsin. Yine de burada kalmak istersen:`
+      : `This is usually a day trip, so you can sleep where you stayed the night before. If you'd rather stay here:`;
+  } else {
+    lead = isTr
+      ? `${range} için tek bir yerde kal: duraklarının çoğu ${escapeHtml(stay.neighborhood)} çevresinde, böylece her sabah yürüyerek başlarsın.`
+      : `Stay in one place for ${range}: most of your stops are around ${escapeHtml(stay.neighborhood)}, so each morning starts on foot.`;
+  }
+
+  const card = document.createElement("section");
+  card.className = "stay-card";
+  card.setAttribute("aria-labelledby", "stay-title");
+  card.innerHTML = `
+    <div class="stay-head">
+      <svg class="stay-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20V8"/><path d="M3 16h18v4"/><path d="M21 16v-4a3 3 0 0 0-3-3h-7v7"/><circle cx="7" cy="12" r="2"/></svg>
+      <div>
+        <h3 id="stay-title">${isTr ? "Nerede kalınır?" : "Where to stay"}</h3>
+        <p class="stay-area">${escapeHtml(stay.query)}</p>
+      </div>
+    </div>
+    <p class="stay-lead">${lead}</p>
+    <div class="stay-form">
+      <label class="stay-date">
+        <span>${isTr ? "Varış tarihi" : "Arrival date"}</span>
+        <input type="date" id="stay-start-date" value="${userState.startDate || ""}">
+      </label>
+      <p class="stay-summary">${guests}${links.checkin ? `; ${isTr ? "giriş" : "check-in"} ${new Date(links.checkin + "T12:00:00").toLocaleDateString(isTr ? "tr-TR" : "en-GB", { day: "numeric", month: "long" })}, ${stay.nights} ${isTr ? "gece" : stay.nights > 1 ? "nights" : "night"}` : ""}</p>
+    </div>
+    <div class="stay-links">
+      <a class="btn btn-primary" href="${links.booking}" target="_blank" rel="noopener">${isTr ? "Booking'de otellere bak" : "See hotels on Booking"}</a>
+      <a class="btn btn-ghost" href="${links.google}" target="_blank" rel="noopener">${isTr ? "Google'da puan ve fiyatlar" : "Ratings and prices on Google"}</a>
+      <a class="btn btn-ghost" href="${links.airbnb}" target="_blank" rel="noopener">${isTr ? "Airbnb'de evler" : "Homes on Airbnb"}</a>
+    </div>
+    <p class="stay-note">${budgetNote} ${isTr ? "Güncel fiyat ve puanları o sitelerde görürsün; tarihleri orada da değiştirebilirsin." : "You'll see live prices and ratings on those sites, and can change the dates there."}</p>
+  `;
+  container.appendChild(card);
+
+  const dateInput = card.querySelector("#stay-start-date");
+  if (dateInput) {
+    dateInput.addEventListener("change", () => {
+      userState.startDate = dateInput.value || "";
+      try { localStorage.setItem("gp_start_date", userState.startDate); } catch (e) { /* storage unavailable */ }
+      const old = container.querySelector(".stay-card");
+      if (old) old.remove();
+      renderStayCard(itinerary, container);
+      const again = container.querySelector("#stay-start-date");
+      if (again) again.focus();
+    });
+  }
 }
 
 // Hero: a live sample of day 1 for the selected country
