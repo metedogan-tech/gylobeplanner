@@ -15,7 +15,8 @@ class UniversalTripPlanner {
       interests = ["history", "food", "views"],
       pace = "balanced",
       budget = "moderate",
-      anchors = null
+      anchors = null,
+      startDate = ""
     } = preferences;
 
     const targetDays = Math.min(Math.max(parseInt(days, 10) || 3, 1), 7);
@@ -26,7 +27,11 @@ class UniversalTripPlanner {
 
     // Check if country has curated data (Turkey, Austria, Netherlands, Italy, etc.)
     if (this.curated[country]) {
-      return this.generateCuratedPlan(countryInfo, this.curated[country], targetDays, travelerType, selectedInterests, pace, budget, anchors);
+      // Leave out places that are shut (e.g. for renovation) during the trip
+      let dataset = this.curated[country];
+      const blocked = typeof tempClosedIds === "function" ? tempClosedIds(country, startDate, targetDays) : null;
+      if (blocked && blocked.size) dataset = Object.assign({}, dataset, { places: dataset.places.filter(p => !blocked.has(p.id)) });
+      return this.generateCuratedPlan(countryInfo, dataset, targetDays, travelerType, selectedInterests, pace, budget, anchors);
     } else {
       // Procedural Smart Travel Plan for any country in the world
       return this.generateProceduralPlan(countryInfo, targetDays, travelerType, selectedInterests, pace, budget);

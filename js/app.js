@@ -609,7 +609,7 @@ function applySwaps(itinerary) {
   itinerary.days.forEach(d => d.stops.forEach(st => used.add(st.place.id)));
   itinerary.days.forEach(d => d.stops.forEach(st => {
     const to = byId[swaps[st.place.id]];
-    if (!to || used.has(to.id)) return;
+    if (!to || used.has(to.id) || isTempClosed(to, userState.startDate, itinerary.days.length)) return;
     used.delete(st.place.id);
     used.add(to.id);
     st.swappedFrom = st.place.id;
@@ -650,6 +650,7 @@ function pickReplacement(dayIdx, stopIdx, opts, used, rejected) {
     if (used.has(p.id) || rejected.has(p.id)) return;
     if (userState.travelerType === "family" && p.category.length === 1 && p.category[0] === "nightlife") return;
     if (isClosedOn(p, weekday)) return;
+    if (isTempClosed(p, userState.startDate, currentItinerary.days.length)) return;
     if (opts.indoor && !isIndoor(p)) return;
     const km = geoDistanceKm(ref, p);
     if (km > maxKm) return;

@@ -43,6 +43,34 @@ const CLOSED_DAYS = {
   norway_national_museum: [1]
 };
 
+// Places shut for a longer period (renovation). They never enter a plan whose
+// dates overlap the closure; without dates, the next days from today are used.
+const TEMP_CLOSED = {
+  paris_centre_pompidou: { from: "2025-09-22", until: "2030-12-31",
+    tr: "Tadilat nedeniyle 2030'a kadar kapalı", en: "Closed for renovation until 2030" },
+  germany_pergamon: { from: "2023-10-23", until: "2027-06-03",
+    tr: "Tadilat nedeniyle kapalı, 4 Haziran 2027'de açılıyor", en: "Closed for renovation, reopens 4 June 2027" }
+};
+
+function tripWindow(startDate, days) {
+  const first = startDate ? tripDate(startDate, 0) : new Date();
+  const last = new Date(first.getTime() + Math.max(0, (days || 1) - 1) * 864e5);
+  return [isoDate(first), isoDate(last)];
+}
+function isTempClosed(place, startDate, days) {
+  const c = TEMP_CLOSED[place.id];
+  if (!c) return false;
+  const [a, b] = tripWindow(startDate, days);
+  return a <= c.until && b >= c.from;
+}
+// Ids of every place in a country that is shut during the trip
+function tempClosedIds(countryId, startDate, days) {
+  const ds = typeof CURATED_DESTINATIONS !== "undefined" && CURATED_DESTINATIONS[countryId];
+  const out = new Set();
+  if (ds) ds.places.forEach(p => { if (isTempClosed(p, startDate, days)) out.add(p.id); });
+  return out;
+}
+
 const WEEKDAYS = {
   tr: ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"],
   en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
