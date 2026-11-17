@@ -962,6 +962,56 @@ function renderStayCard(itinerary, container) {
   if (list) loadHotelSuggestions(itinerary, stay, list, links, (h) => setHotel(Object.assign({}, h, { source: "suggested" })));
 }
 
+function renderRichHotels(hotels, data, stay, list, links, onPick) {
+  const isTr = currentLanguage === "tr";
+  const minPrice = h => (h.prices && h.prices.length ? h.prices[0].eur : null);
+  let sorted = hotels.slice();
+  const score = h => (h.rating || 0) * Math.log10((h.reviews || 0) + 10);
+  if (userState.budget === "economy") sorted.sort((a, b) => (minPrice(a) ?? 1e9) - (minPrice(b) ?? 1e9));
+  else if (userState.budget === "luxury") sorted.sort((a, b) => (minPrice(b) ?? -1) - (minPrice(a) ?? -1) || score(b) - score(a));
+  else sorted.sort((a, b) => score(b) - score(a));
+  const top = sorted.slice(0, 6);
+
+  const sample = data.sample || {};
+  const sampleDate = sample.checkin ? new Date(sample.checkin + "T12:00:00").toLocaleDateString(isTr ? "tr-TR" : "en-GB", { day: "numeric", month: "long" }) : "";
+  const prefs = Object.assign({}, userState, { _checkin: links.checkin, _checkout: links.checkout });
+  const typeLabel = t => ({ Hotel: isTr ? "Otel" : "Hotel", Hostel: "Hostel", "B&B": isTr ? "Pansiyon" : "B&B", Inn: isTr ? "Pansiyon" : "Inn", Specialty: isTr ? "Butik konaklama" : "Specialty lodging" }[t] || t || (isTr ? "Otel" : "Hotel"));
+
+  list.innerHTML = top.map((h, i) => {
+    const p = h.prices && h.prices.length ? h.prices : null;
+    const rating = h.rating ? `<span class="hotel-rating"><strong>${isTr ? String(h.rating).replace(".", ",") : h.rating}</strong>/5</span> <span class="hotel-reviews">(${h.reviews.toLocaleString(isTr ? "tr-TR" : "en-GB")} ${isTr ? "yorum" : "reviews"})</span>` : "";
+    const priceHtml = p
+      ? `<p class="hotel-price"><span>${isTr ? "Gecelik" : "Per night"}</span> <strong>${formatEur(p[0].eur, isTr)}</strong> <span>${escapeHtml(p[0].site)}</span></p>
+         ${p.length > 1 ? `<p class="hotel-meta">${p.slice(1).map(x => `${escapeHtml(x.site)} ${formatEur(x.eur, isTr)}`).join(", ")}</p>` : ""}`
+      : `<p class="hotel-meta">${isTr ? "Bu tarih için fiyat yok; Booking'e bak." : "No price for the sample date; check Booking."}</p>`;
+    return `
+      <article class="hotel-card">
+        <div class="hotel-photo">
+          <span class="photo-fallback" aria-hidden="true">${escapeHtml(h.name)}</span>
+          ${h.image ? `<img src="${escapeHtml(h.image)}" alt="${escapeHtml(h.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
+        </div>
+        <div class="hotel-body">
+          <h5>${escapeHtml(h.name)}</h5>
+          <p class="hotel-meta">${typeLabel(h.type)}${rating ? ", " : ""}${rating}</p>
+          ${priceHtml}
+          <p class="hotel-meta">${isTr ? `Bölgenin merkezine ${formatDistance(h.distanceKm, true)}` : `${formatDistance(h.distanceKm, false)} from the area's centre`}</p>
+          <div class="hotel-actions">
+            <a class="btn btn-ghost btn-sm" href="${hotelBookingUrl(h, stay.query, prefs, currentLanguage)}" target="_blank" rel="noopener">${isTr ? "Tarihlerime göre fiyat" : "Price for my dates"}</a>
+            <a class="btn btn-ghost btn-sm" href="${escapeHtml(h.url)}" target="_blank" rel="noopener">${isTr ? "Yorumlar" : "Reviews"}</a>
+            <button type="button" class="btn btn-primary btn-sm" data-pick="${i}">${isTr ? "Burada kalacağım" : "I'll stay here"}</button>
+          </div>
+        </div>
+      </article>`;
+  }).join("") + `<p class="stay-note">${isTr
+    ? `Puan ve yorumlar TripAdvisor'dan. Fiyatlar ${sampleDate} için 1 gece, 2 kişilik örnek fiyatlardır ve her gün güncellenir; kendi tarihlerinin fiyatı için "Tarihlerime göre fiyat"a bas.`
+    : `Ratings and reviews from TripAdvisor. Prices are samples for 1 night on ${sampleDate} for 2 adults, refreshed daily; tap "Price for my dates" for your own dates.`}</p>`;
+
+  list.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", () => {
+    const h = top[+b.dataset.pick];
+    onPick({ name: h.name, lat: h.lat, lng: h.lng, address: "" });
+  }));
+}
+
 function stayCenter(itinerary, stay) {
   const pts = [];
   for (let i = stay.firstDay - 1; i <= stay.lastDay - 1; i++) {
@@ -971,8 +1021,30 @@ function stayCenter(itinerary, stay) {
   return { lat: pts.reduce((a, p) => a + p.lat, 0) / pts.length, lng: pts.reduce((a, p) => a + p.lng, 0) / pts.length };
 }
 
+// Hotel data (ratings, photos, sample prices) refreshed daily by a GitHub Action
+let hotelDataPromise = null;
+function loadHotelData() {
+  if (!hotelDataPromise) {
+    const day = new Date().toISOString().slice(0, 10);
+    hotelDataPromise = fetch(`data/hotels.json?d=${day}`)
+      .then(r => (r.ok ? r.json() : null))
+      .catch(() => null);
+  }
+  return hotelDataPromise;
+}
+
+function formatEur(n, isTr) {
+  return isTr ? `${n.toLocaleString("tr-TR")} €` : `€${n.toLocaleString("en-GB")}`;
+}
+
 async function loadHotelSuggestions(itinerary, stay, list, links, onPick) {
   const isTr = currentLanguage === "tr";
+  const data = await loadHotelData();
+  const rich = data && data.areas && data.areas[stayKey(itinerary, stay)];
+  if (rich && rich.length) {
+    renderRichHotels(rich, data, stay, list, links, onPick);
+    return;
+  }
   const center = stayCenter(itinerary, stay);
   let hotels = [];
   try {

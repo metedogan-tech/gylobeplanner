@@ -378,6 +378,9 @@ h1, h2, h3, h4 { font-family: inherit; letter-spacing: -0.015em; }
 .hotel-body h5 { font-weight: 800; line-height: 1.2; }
 .hotel-meta { font-size: 0.8rem; color: var(--muted); }
 .hotel-actions { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.hotel-rating strong { font-weight: 900; color: var(--ink); }
+.hotel-price { margin-top: 6px; font-size: 0.85rem; color: var(--muted); }
+.hotel-price strong { font-size: 1.15rem; font-weight: 900; color: var(--ink); }
 
 /* ---------- Guide ---------- */
 .guide-list { display: grid; gap: 0 40px; }
