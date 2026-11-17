@@ -577,7 +577,25 @@ function goToStep(step) {
 
 // Generate & Render Itinerary
 function buildCurrentItinerary() {
-  return applyHotelRouting(planner.generateItinerary(userState), userState.hotels);
+  const hotels = userState.hotels || {};
+  const base = planner.generateItinerary(userState);
+  if (!Object.keys(hotels).length) return applyHotelRouting(base, hotels);
+
+  // Second pass: re-pick each day's places around the traveller's own hotel.
+  // Regions stay the same, so every day keeps its stay area and its hotel.
+  const stayZones = base.days.map((d, i) => {
+    const st = getStayForDay(base, i);
+    return st && hotels[stayKey(base, st)] ? st.zoneKey : null;
+  });
+  const anchors = base.days.map((d, i) => stayZones[i] ? hotelForDay(base, i, hotels) : null);
+  if (!anchors.some(Boolean)) return applyHotelRouting(base, hotels);
+
+  const tuned = planner.generateItinerary(Object.assign({}, userState, { anchors }));
+  const sameRegions = tuned.days.length === base.days.length &&
+    tuned.days.every((d, i) => d.regionId === base.days[i].regionId);
+  if (!sameRegions) return applyHotelRouting(base, hotels);
+  tuned.days.forEach((d, i) => { if (stayZones[i]) d.stayZone = stayZones[i]; });
+  return applyHotelRouting(tuned, hotels);
 }
 
 function generateAndDisplayPlan(opts) {

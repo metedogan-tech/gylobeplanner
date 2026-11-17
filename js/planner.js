@@ -14,7 +14,8 @@ class UniversalTripPlanner {
       travelerType = "couple",
       interests = ["history", "food", "views"],
       pace = "balanced",
-      budget = "moderate"
+      budget = "moderate",
+      anchors = null
     } = preferences;
 
     const targetDays = Math.min(Math.max(parseInt(days, 10) || 3, 1), 7);
@@ -25,14 +26,14 @@ class UniversalTripPlanner {
 
     // Check if country has curated data (Turkey, Austria, Netherlands, Italy, etc.)
     if (this.curated[country]) {
-      return this.generateCuratedPlan(countryInfo, this.curated[country], targetDays, travelerType, selectedInterests, pace, budget);
+      return this.generateCuratedPlan(countryInfo, this.curated[country], targetDays, travelerType, selectedInterests, pace, budget, anchors);
     } else {
       // Procedural Smart Travel Plan for any country in the world
       return this.generateProceduralPlan(countryInfo, targetDays, travelerType, selectedInterests, pace, budget);
     }
   }
 
-  generateCuratedPlan(countryInfo, dataset, targetDays, travelerType, interests, pace, budget) {
+  generateCuratedPlan(countryInfo, dataset, targetDays, travelerType, interests, pace, budget, anchors) {
     const stopsPerDay = pace === "relaxed" ? 3 : pace === "balanced" ? 4 : 5;
     const usedPlaceIds = new Set();
     const itineraryDays = [];
@@ -111,7 +112,20 @@ class UniversalTripPlanner {
       remaining.filter(p => regionOf(p) === dayRegion).forEach(p => {
         zoneCounts[p.zone] = (zoneCounts[p.zone] || 0) + (tierOf(p) === bestTier ? 1 : 0.01);
       });
-      const topZoneKey = Object.keys(zoneCounts).sort((a, b) => zoneCounts[b] - zoneCounts[a])[0] || Object.keys(dataset.zones)[0];
+      // The traveller's own hotel for this day (if any)
+      const hotel = anchors && anchors[dayIndex] && isFinite(anchors[dayIndex].lat) ? anchors[dayIndex] : null;
+      let topZoneKey = Object.keys(zoneCounts).sort((a, b) => zoneCounts[b] - zoneCounts[a])[0] || Object.keys(dataset.zones)[0];
+      if (hotel) {
+        // Of the districts that can still carry the day, take the one closest to the hotel
+        const zoneDist = {};
+        Object.keys(zoneCounts).forEach(z => {
+          const ps = remaining.filter(p => regionOf(p) === dayRegion && p.zone === z);
+          zoneDist[z] = Math.min(...ps.map(p => dist(p, hotel)));
+        });
+        const enough = Math.min(Math.ceil(stopsPerDay / 2), Math.floor(zoneCounts[topZoneKey]));
+        const strong = Object.keys(zoneCounts).filter(z => zoneCounts[z] >= enough);
+        if (strong.length) topZoneKey = strong.sort((a, b) => zoneDist[a] - zoneDist[b])[0];
+      }
       const zoneMeta = dataset.zones[topZoneKey] || {
         titleTr: countryInfo.nameTr,
         titleEn: countryInfo.nameEn,
@@ -133,8 +147,9 @@ class UniversalTripPlanner {
           if (ta !== tb) return ta - tb;
           const za = a.zone === topZoneKey ? 0 : 1, zb = b.zone === topZoneKey ? 0 : 1;
           if (za !== zb) return za - zb;
-          const sa = this.scorePlace(a, interests, budget, travelerType) - (anchor ? dist(a, anchor) * 400 : 0);
-          const sb = this.scorePlace(b, interests, budget, travelerType) - (anchor ? dist(b, anchor) * 400 : 0);
+          const hp = (p) => hotel ? dist(p, hotel) * 200 : 0; // nudge towards the hotel
+          const sa = this.scorePlace(a, interests, budget, travelerType) - (anchor ? dist(a, anchor) * 400 : 0) - hp(a);
+          const sb = this.scorePlace(b, interests, budget, travelerType) - (anchor ? dist(b, anchor) * 400 : 0) - hp(b);
           return sb - sa;
         });
         // Keep the day balanced: avoid more than 2 evening stops

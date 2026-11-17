@@ -190,7 +190,8 @@ function getStayForDay(itinerary, dayIndex) {
       counts[z] = (counts[z] || 0) + 1;
     });
   }
-  const baseZone = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+  // A stay the traveller already booked keeps its area even if the stops shift around it
+  const baseZone = day.stayZone || Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
   const isDayTrip = !baseZone;
   const zoneKey = baseZone || day.zoneKey;
   const area = areas[zoneKey] || { q: `${day.neighborhood}, ${itinerary.country ? itinerary.country.nameEn : ""}` };
