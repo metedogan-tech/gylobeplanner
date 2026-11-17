@@ -13,7 +13,9 @@ const userState = {
   budget: "moderate",
   startDate: "",
   hotels: {},        // stay area key -> { name, lat, lng, address, source }
-  bookingMode: {}    // stay area key -> "own" (has a booking) | "none" (wants suggestions)
+  bookingMode: {},   // stay area key -> "own" (has a booking) | "none" (wants suggestions)
+  swaps: {},         // original place id -> place the traveller chose instead
+  rejected: []       // places the traveller swapped out (never suggested again)
 };
 
 // ---------- Remember where the traveller left off (survives a page refresh) ----------
@@ -30,7 +32,12 @@ function saveState() {
 
 function loadSavedState() {
   try {
-    const raw = JSON.parse(localStorage.getItem(STATE_KEY) || "null");
+    return applySavedState(JSON.parse(localStorage.getItem(STATE_KEY) || "null"));
+  } catch (e) { return null; }
+}
+
+function applySavedState(raw) {
+  try {
     if (!raw || raw.v !== 1 || !raw.userState) return null;
     const u = raw.userState;
     if (u.country && COUNTRIES_REGISTRY.some(c => c.id === u.country)) userState.country = u.country;
@@ -44,6 +51,8 @@ function loadSavedState() {
     userState.startDate = typeof u.startDate === "string" && u.startDate >= today ? u.startDate : "";
     userState.hotels = u.hotels && typeof u.hotels === "object" ? u.hotels : {};
     userState.bookingMode = u.bookingMode && typeof u.bookingMode === "object" ? u.bookingMode : {};
+    userState.swaps = u.swaps && typeof u.swaps === "object" ? u.swaps : {};
+    userState.rejected = Array.isArray(u.rejected) ? u.rejected.slice(-200) : [];
     return raw;
   } catch (e) { return null; }
 }
@@ -97,7 +106,8 @@ function normalizeStr(str) {
 const planner = new UniversalTripPlanner(CURATED_DESTINATIONS, COUNTRIES_REGISTRY);
 
 document.addEventListener("DOMContentLoaded", () => {
-  const saved = loadSavedState();
+  const shared = readSharedLink();
+  const saved = shared || loadSavedState();
   if (saved && (saved.lang === "en" || saved.lang === "tr")) currentLanguage = saved.lang;
   initTranslations();
   initLanguageSwitcher();
@@ -115,6 +125,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Continue where the traveller left off
   syncSelectionUI();
+  if (shared) {
+    history.replaceState(null, "", location.pathname + location.search);
+    saveState();
+    setTimeout(() => showToast(currentLanguage === "tr" ? "Paylaşılan plan açıldı." : "Shared plan opened."), 600);
+  }
   if (saved) {
     if (saved.planVisible) {
       generateAndDisplayPlan({ restore: true, dayIndex: saved.activeDayIndex });
@@ -527,6 +542,8 @@ function initWizardNavigation() {
   });
 
   btnGenerate.addEventListener("click", () => {
+    userState.swaps = {};
+    userState.rejected = [];
     generateAndDisplayPlan();
   });
 }
@@ -576,10 +593,96 @@ function goToStep(step) {
 }
 
 // Generate & Render Itinerary
+function finishItinerary(itinerary, hotels) {
+  return applyHotelRouting(applySwaps(itinerary), hotels);
+}
+
+// Put the traveller's own picks in place of the places they swapped out
+function applySwaps(itinerary) {
+  const swaps = userState.swaps || {};
+  const ds = CURATED_DESTINATIONS[userState.country];
+  if (!ds || !Object.keys(swaps).length) return itinerary;
+  const byId = {};
+  ds.places.forEach(p => { byId[p.id] = p; });
+  const used = new Set();
+  itinerary.days.forEach(d => d.stops.forEach(st => used.add(st.place.id)));
+  itinerary.days.forEach(d => d.stops.forEach(st => {
+    const to = byId[swaps[st.place.id]];
+    if (!to || used.has(to.id)) return;
+    used.delete(st.place.id);
+    used.add(to.id);
+    st.swappedFrom = st.place.id;
+    st.place = to;
+    st.timeSlot = to.timeOfDay || st.timeSlot;
+  }));
+  return itinerary;
+}
+
+// Pick another place for one stop: same area, not already in the trip,
+// not one the traveller already turned down, similar time of day and interests
+function swapStop(dayIdx, stopIdx) {
+  const day = currentItinerary && currentItinerary.days[dayIdx];
+  const stop = day && day.stops[stopIdx];
+  const ds = CURATED_DESTINATIONS[userState.country];
+  if (!stop || !ds) return null;
+
+  const used = new Set();
+  currentItinerary.days.forEach(d => d.stops.forEach(st => used.add(st.place.id)));
+  const rejected = new Set(userState.rejected || []);
+  rejected.add(stop.place.id);
+  if (stop.swappedFrom) rejected.add(stop.swappedFrom);
+
+  const others = day.stops.filter((st, i) => i !== stopIdx).map(st => st.place);
+  const ref = others.length ? {
+    lat: others.reduce((t, p) => t + p.lat, 0) / others.length,
+    lng: others.reduce((t, p) => t + p.lng, 0) / others.length
+  } : stop.place;
+  const span = Math.max(0, ...day.stops.map(st => geoDistanceKm(ref, st.place)));
+  const maxKm = Math.max(5, span * 1.3);
+  const budgetOk = (p) => {
+    const t = p.budgetTier || [];
+    if (userState.budget === "economy") return t.includes("economy");
+    if (userState.budget === "luxury") return t.includes("luxury") || t.includes("moderate");
+    return true;
+  };
+
+  let best = null, bestScore = -Infinity;
+  ds.places.forEach(p => {
+    if (used.has(p.id) || rejected.has(p.id)) return;
+    if (userState.travelerType === "family" && p.category.length === 1 && p.category[0] === "nightlife") return;
+    const km = geoDistanceKm(ref, p);
+    if (km > maxKm) return;
+    const score = p.category.filter(c => userState.interests.includes(c)).length * 15
+      + (p.timeOfDay === stop.timeSlot ? 12 : 0)
+      + (budgetOk(p) ? 8 : 0)
+      - km * 3
+      - (day.hotel ? geoDistanceKm(day.hotel, p) : 0);
+    if (score > bestScore) { bestScore = score; best = p; }
+  });
+  if (!best) return null;
+
+  const original = stop.swappedFrom || stop.place.id;
+  userState.swaps = Object.assign({}, userState.swaps, { [original]: best.id });
+  userState.rejected = [...rejected].slice(-200);
+  lastSwappedId = best.id;
+  refreshPlanKeepingDay();
+  return best;
+}
+
+function undoSwap(originalId) {
+  const next = Object.assign({}, userState.swaps);
+  delete next[originalId];
+  userState.swaps = next;
+  userState.rejected = (userState.rejected || []).filter(id => id !== originalId);
+  lastSwappedId = originalId;
+  refreshPlanKeepingDay();
+}
+let lastSwappedId = null;
+
 function buildCurrentItinerary() {
   const hotels = userState.hotels || {};
   const base = planner.generateItinerary(userState);
-  if (!Object.keys(hotels).length) return applyHotelRouting(base, hotels);
+  if (!Object.keys(hotels).length) return finishItinerary(base, hotels);
 
   // Second pass: re-pick each day's places around the traveller's own hotel.
   // Regions stay the same, so every day keeps its stay area and its hotel.
@@ -588,14 +691,14 @@ function buildCurrentItinerary() {
     return st && hotels[stayKey(base, st)] ? st.zoneKey : null;
   });
   const anchors = base.days.map((d, i) => stayZones[i] ? hotelForDay(base, i, hotels) : null);
-  if (!anchors.some(Boolean)) return applyHotelRouting(base, hotels);
+  if (!anchors.some(Boolean)) return finishItinerary(base, hotels);
 
   const tuned = planner.generateItinerary(Object.assign({}, userState, { anchors }));
   const sameRegions = tuned.days.length === base.days.length &&
     tuned.days.every((d, i) => d.regionId === base.days[i].regionId);
-  if (!sameRegions) return applyHotelRouting(base, hotels);
+  if (!sameRegions) return finishItinerary(base, hotels);
   tuned.days.forEach((d, i) => { if (stayZones[i]) d.stayZone = stayZones[i]; });
-  return applyHotelRouting(tuned, hotels);
+  return finishItinerary(tuned, hotels);
 }
 
 function generateAndDisplayPlan(opts) {
@@ -766,7 +869,15 @@ function renderItinerary(itinerary) {
     }).join("");
 
     const el = document.createElement("div");
-    el.className = "stop";
+    el.className = "stop" + (p.id === lastSwappedId ? " just-swapped" : "");
+    const swapControls = `
+      <div class="swap-row">
+        <button type="button" class="swap-btn" data-swap="${idx}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h13l-3-3"/><path d="M20 17H7l3 3"/></svg>
+          ${isTr ? "Bu yeri değiştir" : "Swap this place"}
+        </button>
+        ${stop.swappedFrom ? `<button type="button" class="swap-undo" data-undo="${escapeHtml(stop.swappedFrom)}">${isTr ? "Önerilen yere dön" : "Back to the suggested place"}</button>` : ""}
+      </div>`;
     el.innerHTML = `
       <span class="stop-node" aria-hidden="true">${idx + 1}</span>
       <article class="stop-card">
@@ -781,10 +892,23 @@ function renderItinerary(itinerary) {
           <div class="tags">${tags}<span class="tag tag-budget">${budgetLabel(p, isTr)}</span></div>
           <p class="tip"><strong>${isTr ? "İpucu:" : "Tip:"}</strong> ${escapeHtml(isTr ? p.insiderTipTr : p.insiderTipEn)}</p>
           <p class="how"><strong>${isTr ? "En yakın durak:" : "Nearest stop:"}</strong> ${escapeHtml(isTr ? p.transitTr : p.transitEn)}</p>
+          ${swapControls}
         </div>
       </article>
     `;
     line.appendChild(el);
+    const swapBtn = el.querySelector("[data-swap]");
+    swapBtn.addEventListener("click", () => {
+      const picked = swapStop(activeDayIndex, idx);
+      if (!picked) {
+        swapBtn.disabled = true;
+        swapBtn.textContent = isTr ? "Bu bölgede başka yer kalmadı" : "No other places left in this area";
+      } else {
+        showToast(isTr ? `${name} yerine ${picked.nameTr} eklendi.` : `${picked.nameEn} replaces ${name}.`);
+      }
+    });
+    const undoBtn = el.querySelector("[data-undo]");
+    if (undoBtn) undoBtn.addEventListener("click", () => undoSwap(undoBtn.dataset.undo));
 
     const next = activeDay.stops[idx + 1];
     if (next) {
@@ -815,6 +939,11 @@ function renderItinerary(itinerary) {
 
   contentContainer.appendChild(line);
   hydratePlaceImages(line);
+  const swapped = line.querySelector(".just-swapped");
+  if (swapped) {
+    swapped.scrollIntoView({ behavior: "smooth", block: "center" });
+    lastSwappedId = null;
+  }
   renderStayCard(itinerary, contentContainer);
   updateMap(activeDay.stops, country, activeDay.color, activeDay.hotel);
 }
@@ -1298,44 +1427,195 @@ function initActionButtons() {
     });
   }
 
-  // Print / PDF
+  // Print / PDF: a clean page with every day, not just the open one
   const btnPrint = document.getElementById("btn-print");
-  if (btnPrint) {
-    btnPrint.addEventListener("click", () => {
-      window.print();
-    });
-  }
+  if (btnPrint) btnPrint.addEventListener("click", () => { renderPrintView(); window.print(); });
+  window.addEventListener("beforeprint", renderPrintView);
 
-  // Share via WhatsApp
+  // Share: a link that opens exactly this plan
   const btnShare = document.getElementById("btn-share");
-  if (btnShare) {
-    btnShare.addEventListener("click", () => {
+  const menu = document.getElementById("share-menu");
+  if (btnShare && menu) {
+    const close = () => { menu.hidden = true; btnShare.setAttribute("aria-expanded", "false"); };
+    btnShare.addEventListener("click", (e) => {
+      e.stopPropagation();
       if (!currentItinerary) return;
+      const open = menu.hidden;
+      menu.hidden = !open;
+      btnShare.setAttribute("aria-expanded", open ? "true" : "false");
+      const nativeBtn = menu.querySelector('[data-share="native"]');
+      if (nativeBtn) nativeBtn.hidden = !navigator.share;
+    });
+    document.addEventListener("click", (e) => { if (!menu.contains(e.target)) close(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    menu.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-share]");
+      if (!b) return;
       const isTr = currentLanguage === "tr";
-      const country = currentItinerary.country;
-      const countryName = country ? (isTr ? country.nameTr : country.nameEn) : "";
-
-      let text = isTr
-        ? `🌍 *Benim ${countryName} Tatil Planım (${userState.days} Gün)*\n\n`
-        : `🌍 *My ${countryName} Trip Plan (${userState.days} Days)*\n\n`;
-
-      currentItinerary.days.forEach(day => {
-        text += isTr ? `📍 *${day.titleTr}*\n` : `📍 *${day.titleEn}*\n`;
-        day.stops.forEach((s, idx) => {
-          const name = isTr ? s.place.nameTr : s.place.nameEn;
-          text += `  ${idx + 1}. ${name}\n`;
-        });
-        text += `\n`;
-      });
-
-      text += isTr
-        ? `GlobePlanner ile akıllı olarak oluşturuldu!`
-        : `Generated with GlobePlanner!`;
-
-      const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
-      window.open(url, "_blank");
+      const link = buildShareLink();
+      const title = shareTitle(isTr);
+      close();
+      if (b.dataset.share === "copy") {
+        const ok = await copyText(link);
+        showToast(ok ? (isTr ? "Link kopyalandı. Açan kişi planı aynen görür." : "Link copied. Anyone who opens it sees this plan.")
+                     : (isTr ? "Kopyalanamadı. Linki adres çubuğundan alabilirsin." : "Couldn't copy. Take the link from the address bar."));
+        if (!ok) history.replaceState(null, "", link);
+      } else if (b.dataset.share === "whatsapp") {
+        const lines = currentItinerary.days.map(d =>
+          `${d.dayNumber}. ${isTr ? "gün" : "day"}: ${d.stops.map(st => isTr ? st.place.nameTr : st.place.nameEn).join(", ")}`);
+        const text = `${title}\n\n${lines.join("\n")}\n\n${isTr ? "Planın tamamı:" : "Full plan:"} ${link}`;
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+      } else if (b.dataset.share === "native" && navigator.share) {
+        try { await navigator.share({ title, url: link }); } catch (err) { /* cancelled */ }
+      }
     });
   }
+}
+
+function shareTitle(isTr) {
+  const c = currentItinerary.country;
+  const name = c ? (isTr ? c.nameTr : c.nameEn) : "";
+  const n = currentItinerary.days.length;
+  return isTr ? `${name} için ${n} günlük gezi planım` : `My ${n}-day ${name} trip plan`;
+}
+
+// ---------- shareable link: the whole plan packed into the address ----------
+function b64urlEncode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  bytes.forEach(b => { bin += String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlDecode(s) {
+  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+  return new TextDecoder().decode(Uint8Array.from(bin, ch => ch.charCodeAt(0)));
+}
+
+function buildShareLink() {
+  const u = userState;
+  const hotels = {};
+  Object.keys(u.hotels || {}).forEach(k => {
+    const h = u.hotels[k];
+    if (h && isFinite(h.lat) && isFinite(h.lng)) {
+      hotels[k] = { name: h.name, lat: +(+h.lat).toFixed(5), lng: +(+h.lng).toFixed(5), source: h.source || "own" };
+    }
+  });
+  const packed = {
+    c: u.country, d: u.days, t: u.travelerType, i: u.interests, p: u.pace, b: u.budget,
+    s: u.startDate || "", h: hotels, m: u.bookingMode || {}, w: u.swaps || {}, a: activeDayIndex, l: currentLanguage
+  };
+  return `${location.origin}${location.pathname}#plan=${b64urlEncode(JSON.stringify(packed))}`;
+}
+
+function readSharedLink() {
+  const m = /[#&]plan=([A-Za-z0-9_-]+)/.exec(location.hash);
+  if (!m) return null;
+  try {
+    const x = JSON.parse(b64urlDecode(m[1]));
+    return applySavedState({
+      v: 1,
+      planVisible: true,
+      activeDayIndex: Number.isInteger(x.a) ? x.a : 0,
+      currentStep: totalSteps,
+      lang: x.l,
+      userState: { country: x.c, days: x.d, travelerType: x.t, interests: x.i, pace: x.p, budget: x.b,
+        startDate: x.s, hotels: x.h, bookingMode: x.m, swaps: x.w, rejected: [] }
+    });
+  } catch (e) { return null; }
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* fall back */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  let t = document.getElementById("gp-toast");
+  if (!t) {
+    t = document.createElement("div");
+    t.id = "gp-toast";
+    t.className = "toast";
+    t.setAttribute("role", "status");
+    t.setAttribute("aria-live", "polite");
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 3200);
+}
+
+// ---------- print view: every day on paper ----------
+function renderPrintView() {
+  if (!currentItinerary) return;
+  let root = document.getElementById("print-view");
+  if (!root) {
+    root = document.createElement("div");
+    root.id = "print-view";
+    document.body.appendChild(root);
+  }
+  const isTr = currentLanguage === "tr";
+  const it = currentItinerary;
+  const fmtDate = (offset) => {
+    if (!userState.startDate) return "";
+    const d = new Date(userState.startDate + "T12:00:00");
+    d.setDate(d.getDate() + offset);
+    return d.toLocaleDateString(isTr ? "tr-TR" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
+  };
+  const travellers = { solo: isTr ? "Tek kişi" : "Solo", couple: isTr ? "Çift" : "Couple", family: isTr ? "Aile" : "Family", friends: isTr ? "Arkadaş grubu" : "Friends" };
+  const paces = { relaxed: isTr ? "sakin tempo" : "relaxed pace", balanced: isTr ? "dengeli tempo" : "balanced pace", fast: isTr ? "hızlı tempo" : "fast pace" };
+  const leg = (a, b) => { const l = describeLeg(a, b, isTr); return `<p class="pv-leg">${escapeHtml(l.text)}</p>`; };
+
+  const days = it.days.map((day, di) => {
+    const title = (isTr ? day.titleTr : day.titleEn).replace(/^(\d+\. Gün|Day \d+):\s*/, "");
+    const date = fmtDate(di);
+    let body = "";
+    if (day.hotel) body += `<p class="pv-hotel">${isTr ? "Başlangıç: " : "Start: "}<strong>${escapeHtml(day.hotel.name)}</strong></p>` + (day.stops[0] ? leg(day.hotel, day.stops[0].place) : "");
+    day.stops.forEach((st, i) => {
+      const p = st.place;
+      const slot = SLOT_LABELS[st.timeSlot] || SLOT_LABELS.morning;
+      body += `
+        <div class="pv-stop">
+          <div class="pv-num">${i + 1}</div>
+          <div>
+            <p class="pv-meta">${isTr ? slot.tr : slot.en}, ${isTr ? `yaklaşık ${p.durationHours} saat` : `about ${p.durationHours} h`}</p>
+            <h3>${escapeHtml(isTr ? p.nameTr : p.nameEn)}</h3>
+            <p>${escapeHtml(isTr ? p.descTr : p.descEn)}</p>
+            <p class="pv-small"><strong>${isTr ? "İpucu:" : "Tip:"}</strong> ${escapeHtml(isTr ? p.insiderTipTr : p.insiderTipEn)}</p>
+            <p class="pv-small"><strong>${isTr ? "En yakın durak:" : "Nearest stop:"}</strong> ${escapeHtml(isTr ? p.transitTr : p.transitEn)}</p>
+          </div>
+        </div>`;
+      const next = day.stops[i + 1];
+      if (next) body += leg(p, next.place);
+    });
+    if (day.hotel && day.stops.length) body += leg(day.stops[day.stops.length - 1].place, day.hotel) + `<p class="pv-hotel">${isTr ? "Otele dönüş" : "Back to the hotel"}</p>`;
+    return `
+      <section class="pv-day">
+        <h2>${isTr ? `${day.dayNumber}. gün` : `Day ${day.dayNumber}`}: ${escapeHtml(title)}</h2>
+        <p class="pv-area">${escapeHtml(day.neighborhood)}${date ? `, ${escapeHtml(date)}` : ""}, ~${String(day.stats.walkingKm).replace(".", isTr ? "," : ".")} km</p>
+        ${body}
+      </section>`;
+  }).join("");
+
+  root.innerHTML = `
+    <header class="pv-head">
+      <p class="pv-brand">GlobePlanner</p>
+      <h1>${escapeHtml(shareTitle(isTr))}</h1>
+      <p>${travellers[userState.travelerType] || ""}, ${paces[userState.pace] || ""}${userState.startDate ? `, ${escapeHtml(fmtDate(0))}` : ""}</p>
+    </header>
+    ${days}
+    <footer class="pv-foot">
+      <p>${isTr ? "Planı internette açmak için:" : "Open this plan online:"}</p>
+      <p class="pv-link">${escapeHtml(buildShareLink())}</p>
+    </footer>`;
 }
 
 

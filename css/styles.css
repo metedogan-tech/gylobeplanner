@@ -395,8 +395,53 @@ h1, h2, h3, h4 { font-family: inherit; letter-spacing: -0.015em; }
 .footer-credit { font-size: 0.8rem; }
 
 /* ---------- Print ---------- */
+/* ---------- swap a stop ---------- */
+.swap-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.swap-btn, .swap-undo { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 0.85rem; font-weight: 700;
+  padding: 7px 12px; border-radius: 999px; border: 1.5px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+.swap-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.swap-btn:hover { border-color: var(--ink); }
+.swap-btn:disabled { opacity: 0.6; cursor: default; }
+.swap-undo { border-color: transparent; color: var(--muted); text-decoration: underline; padding-left: 4px; }
+.swap-undo:hover { color: var(--ink); }
+.swap-btn:focus-visible, .swap-undo:focus-visible, .share-menu button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.stop.just-swapped .stop-card { animation: swapIn 1.4s ease-out; }
+@keyframes swapIn { 0% { box-shadow: 0 0 0 3px var(--day, var(--signal)); } 100% { box-shadow: 0 0 0 3px transparent; } }
+@media (prefers-reduced-motion: reduce) { .stop.just-swapped .stop-card { animation: none; outline: 3px solid var(--day, var(--signal)); } }
+
+/* ---------- share menu & toast ---------- */
+.share-wrap { position: relative; display: inline-flex; }
+.share-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 1200; min-width: 230px; padding: 6px;
+  background: var(--surface); border: 1.5px solid var(--ink); border-radius: 14px; box-shadow: var(--shadow); display: grid; }
+.share-menu[hidden], .share-menu button[hidden] { display: none; }
+.share-menu button { font: inherit; font-weight: 700; text-align: left; padding: 10px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); cursor: pointer; }
+.share-menu button:hover { background: var(--paper); }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); z-index: 2000; max-width: min(92vw, 460px);
+  background: var(--inverse-bg); color: var(--inverse-fg); padding: 12px 18px; border-radius: 12px; font-weight: 700; font-size: 0.92rem;
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---------- print view ---------- */
+#print-view { display: none; }
 @media print {
-  .site-nav, .hero, footer, #destination-section, #wizard-section, .plan-actions, .day-tabs, .map-col, #survival-guide { display: none !important; }
-  body { background: #fff; }
-  .stop-card, .day-header { break-inside: avoid; border: 1px solid #ccc; }
+  @page { margin: 16mm 14mm; }
+  body > *:not(#print-view) { display: none !important; }
+  html, body { background: #fff !important; color: #000 !important; }
+  #print-view { display: block; font-family: "Overpass", system-ui, sans-serif; color: #000; font-size: 10.5pt; line-height: 1.45; }
+  .pv-head { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 16px; }
+  .pv-brand { font-weight: 900; font-size: 10pt; }
+  .pv-head h1 { font-size: 20pt; font-weight: 900; line-height: 1.15; margin: 4px 0; }
+  .pv-day { break-before: page; }
+  .pv-day:first-of-type { break-before: auto; }
+  .pv-day h2 { font-size: 15pt; font-weight: 900; margin: 0 0 2px; }
+  .pv-area { color: #444; margin-bottom: 12px; }
+  .pv-stop { display: grid; grid-template-columns: 26px 1fr; gap: 10px; break-inside: avoid; margin: 6px 0; }
+  .pv-num { width: 24px; height: 24px; border: 2px solid #000; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 9.5pt; }
+  .pv-stop h3 { font-size: 12pt; font-weight: 900; margin: 0 0 2px; }
+  .pv-meta { color: #444; font-size: 9pt; font-weight: 700; }
+  .pv-small { font-size: 9.5pt; margin-top: 3px; }
+  .pv-leg { margin: 2px 0 2px 12px; padding: 4px 0 4px 22px; border-left: 2px dashed #888; color: #333; font-size: 9.5pt; break-inside: avoid; }
+  .pv-hotel { font-size: 10pt; margin: 4px 0; }
+  .pv-foot { margin-top: 20px; border-top: 1px solid #000; padding-top: 8px; font-size: 9pt; break-inside: avoid; }
+  .pv-link { word-break: break-all; color: #333; }
 }

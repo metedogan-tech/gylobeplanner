@@ -101,7 +101,10 @@ const translations = {
     // Actions
     btnEditPreferences: "Seçimleri değiştir",
     btnPrint: "Yazdır / PDF",
-    btnShare: "WhatsApp'ta paylaş",
+    btnShare: "Planı paylaş",
+    shareCopy: "Linki kopyala",
+    shareWhatsapp: "WhatsApp'ta gönder",
+    shareNative: "Başka uygulamayla paylaş",
     copiedLink: "Plan kopyalandı!",
 
     // Survival Guide
@@ -229,7 +232,10 @@ const translations = {
     // Actions
     btnEditPreferences: "Change choices",
     btnPrint: "Print / PDF",
-    btnShare: "Share on WhatsApp",
+    btnShare: "Share plan",
+    shareCopy: "Copy link",
+    shareWhatsapp: "Send on WhatsApp",
+    shareNative: "Share with another app",
     copiedLink: "Plan link copied!",
 
     // Survival Guide
