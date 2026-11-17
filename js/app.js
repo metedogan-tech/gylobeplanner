@@ -921,6 +921,9 @@ function renderItinerary(itinerary) {
   rainBox.hidden = true;
   contentContainer.appendChild(rainBox);
   if (dayDate) loadDayWeather(itinerary, activeDayIndex, header.querySelector(".day-weather"), rainBox);
+  const stayHost = document.createElement("div");
+  stayHost.className = "stay-host";
+  contentContainer.appendChild(stayHost);
 
   const line = document.createElement("div");
   line.className = "stops";
@@ -977,8 +980,7 @@ function renderItinerary(itinerary) {
         <div class="stop-body">
           <div class="stop-meta">
             <span class="slot">${fmtClock(times[idx].start)}–${fmtClock(times[idx].end)}</span>
-            <span>${isTr ? slot.tr : slot.en}</span>
-            <span>${isTr ? `burada yaklaşık ${p.durationHours} saat` : `about ${p.durationHours} h here`}</span>
+            <span>${isTr ? `${String(p.durationHours).replace(".", ",")} saat` : `${p.durationHours} h`}</span>
           </div>
           ${closureNote(stop, p, isTr)}
           <h4 class="stop-title">${escapeHtml(name)}</h4>
@@ -1040,7 +1042,7 @@ function renderItinerary(itinerary) {
     swapped.scrollIntoView({ behavior: "smooth", block: "center" });
     lastSwappedId = null;
   }
-  renderStayCard(itinerary, contentContainer);
+  renderStayCard(itinerary, stayHost);
   updateMap(activeDay.stops, country, activeDay.color, activeDay.hotel);
 }
 
