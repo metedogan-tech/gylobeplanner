@@ -107,6 +107,21 @@ function normalizeStr(str) {
 // Initialize Universal Planner
 const planner = new UniversalTripPlanner(CURATED_DESTINATIONS, COUNTRIES_REGISTRY);
 
+// The cities each country's plans actually cover
+const CITY_LABELS = {
+  turkey: ["İstanbul", "Istanbul"], france: ["Paris & Versay", "Paris & Versailles"], spain: ["Barselona & Madrid", "Barcelona & Madrid"],
+  germany: ["Berlin & Potsdam", "Berlin & Potsdam"], uk: ["Londra", "London"], italy: ["Roma", "Rome"], austria: ["Viyana & Wachau", "Vienna & Wachau"],
+  netherlands: ["Amsterdam", "Amsterdam"], greece: ["Atina", "Athens"], japan: ["Tokyo & Kyoto", "Tokyo & Kyoto"],
+  usa: ["New York & Washington", "New York & Washington"], egypt: ["Kahire, Luksor & İskenderiye", "Cairo, Luxor & Alexandria"],
+  uae: ["Dubai & Abu Dabi", "Dubai & Abu Dhabi"], thailand: ["Bangkok & Ayutthaya", "Bangkok & Ayutthaya"], brazil: ["Rio de Janeiro", "Rio de Janeiro"],
+  switzerland: ["Zürih, Luzern, Cenevre & Alpler", "Zurich, Lucerne, Geneva & the Alps"], portugal: ["Lizbon, Porto & Algarve", "Lisbon, Porto & the Algarve"],
+  czechia: ["Prag & Çeski Krumlov", "Prague & Český Krumlov"], norway: ["Oslo, Bergen & Tromsø", "Oslo, Bergen & Tromsø"], iceland: ["Reykjavik & güney kıyısı", "Reykjavík & the south coast"]
+};
+function cityLabel(c) {
+  const l = CITY_LABELS[c.id];
+  return l ? l[currentLanguage === "tr" ? 0 : 1] : c.capital;
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const shared = readSharedLink();
   const saved = shared || loadSavedState();
@@ -222,7 +237,7 @@ function renderPopularCountries(filterText = "") {
     countriesToShow = COUNTRIES_REGISTRY.filter(c => {
       const nameTr = normalizeStr(c.nameTr);
       const nameEn = normalizeStr(c.nameEn);
-      const capital = normalizeStr(c.capital);
+      const capital = normalizeStr(c.capital + " " + (CITY_LABELS[c.id] || []).join(" "));
       const id = normalizeStr(c.id);
       return nameTr.includes(normQuery) || nameEn.includes(normQuery) || capital.includes(normQuery) || id.includes(normQuery);
     });
@@ -260,7 +275,7 @@ function renderPopularCountries(filterText = "") {
       <span class="flag" aria-hidden="true">${c.flag}</span>
       <span class="min-w-0">
         <span class="name">${name}</span>
-        <span class="cap">${c.capital}</span>
+        <span class="cap">${cityLabel(c)}</span>
       </span>
     `;
     card.addEventListener("click", () => selectCountry(c.id));
@@ -286,7 +301,7 @@ function populateAllCountriesSelect() {
     const opt = document.createElement("option");
     opt.value = c.id;
     const name = isTr ? c.nameTr : c.nameEn;
-    opt.textContent = `${c.flag} ${name} (${c.capital})`;
+    opt.textContent = `${c.flag} ${name} (${cityLabel(c)})`;
     if (c.id === userState.country) {
       opt.selected = true;
     }
@@ -320,14 +335,14 @@ function selectCountry(countryId) {
 
   if (heroFlag) heroFlag.textContent = country.flag;
   if (heroCountry) heroCountry.textContent = name;
-  if (heroCapital) heroCapital.textContent = country.capital;
+  if (heroCapital) heroCapital.textContent = cityLabel(country);
 
   // Update Wizard banner
   const wizardFlag = document.getElementById("wizard-flag");
   const wizardName = document.getElementById("wizard-country-name");
 
   if (wizardFlag) wizardFlag.textContent = country.flag;
-  if (wizardName) wizardName.textContent = `${name} (${country.capital})`;
+  if (wizardName) wizardName.textContent = `${name} (${cityLabel(country)})`;
 
   // Re-render Survival Guide and the hero sample line for this country
   renderSurvivalGuide();
@@ -817,6 +832,29 @@ function photoMarkup(p, name) {
   `;
 }
 
+// Days in the same district get the same title from the planner ("... (2. Keşif)").
+// Give each of them its own title from its best-known stops, and its own tab name.
+function shortPlaceName(p, isTr) {
+  return (isTr ? p.nameTr : p.nameEn).split(/ & | \(| - /)[0].trim();
+}
+function dayLabels(itinerary, isTr) {
+  const base = itinerary.days.map(d => (isTr ? d.titleTr : d.titleEn)
+    .replace(/^(\d+\. Gün|Day \d+):\s*/, "").replace(/\s*\((\d+\. Keşif|Part \d+)\)$/, ""));
+  const count = {};
+  base.forEach(t => { count[t] = (count[t] || 0) + 1; });
+  const hoods = {};
+  itinerary.days.forEach(d => { hoods[d.neighborhood] = (hoods[d.neighborhood] || 0) + 1; });
+  return itinerary.days.map((d, i) => {
+    const names = d.stops.map(s => shortPlaceName(s.place, isTr));
+    const zoneShort = base[i].replace(/\s*\([^)]*\)$/, "");
+    const title = count[base[i]] > 1 && names.length
+      ? `${zoneShort}: ${names.slice(0, 2).join(isTr ? " ve " : " and ")}`
+      : base[i];
+    const tab = hoods[d.neighborhood] > 1 && names.length ? names[0] : d.neighborhood;
+    return { title, tab };
+  });
+}
+
 function renderItinerary(itinerary) {
   const tabsContainer = document.getElementById("day-tabs");
   const contentContainer = document.getElementById("day-content");
@@ -838,6 +876,7 @@ function renderItinerary(itinerary) {
   }
 
   // Day tabs: each day is a line with its own colour
+  const labels = dayLabels(itinerary, isTr);
   itinerary.days.forEach((day, idx) => {
     const tab = document.createElement("button");
     const isActive = idx === activeDayIndex;
@@ -846,7 +885,7 @@ function renderItinerary(itinerary) {
     tab.setAttribute("role", "tab");
     tab.setAttribute("aria-selected", isActive ? "true" : "false");
     tab.style.setProperty("--day", day.color || "#2346D8");
-    tab.innerHTML = `<span class="line-badge">${day.dayNumber}</span><span class="day-tab-name">${escapeHtml(day.neighborhood)}</span>`;
+    tab.innerHTML = `<span class="line-badge">${day.dayNumber}</span><span class="day-tab-name">${escapeHtml(labels[idx].tab)}</span>`;
     tab.addEventListener("click", () => {
       activeDayIndex = idx;
       saveState();
@@ -859,7 +898,7 @@ function renderItinerary(itinerary) {
   if (!activeDay) return;
   contentContainer.style.setProperty("--day", activeDay.color || "#2346D8");
 
-  const dayTitle = (isTr ? activeDay.titleTr : activeDay.titleEn).replace(/^(\d+\. Gün|Day \d+):\s*/, "");
+  const dayTitle = labels[activeDayIndex].title;
   const dayDate = tripDate(userState.startDate, activeDayIndex);
   const times = scheduleDay(activeDay, activeDayIndex, userState, country ? country.id : "");
   const header = document.createElement("div");
@@ -1828,8 +1867,9 @@ function renderPrintView() {
   const paces = { relaxed: isTr ? "sakin tempo" : "relaxed pace", balanced: isTr ? "dengeli tempo" : "balanced pace", fast: isTr ? "hızlı tempo" : "fast pace" };
   const leg = (a, b) => { const l = describeLeg(a, b, isTr); return `<p class="pv-leg">${escapeHtml(l.text)}</p>`; };
 
+  const pvLabels = dayLabels(it, isTr);
   const days = it.days.map((day, di) => {
-    const title = (isTr ? day.titleTr : day.titleEn).replace(/^(\d+\. Gün|Day \d+):\s*/, "");
+    const title = pvLabels[di].title;
     const date = fmtDate(di);
     let body = "";
     if (day.hotel) body += `<p class="pv-hotel">${isTr ? "Başlangıç: " : "Start: "}<strong>${escapeHtml(day.hotel.name)}</strong></p>` + (day.stops[0] ? leg(day.hotel, day.stops[0].place) : "");
