@@ -23,7 +23,16 @@ const userState = {
 const STATE_KEY = "gp_state_v1";
 let planVisible = false;
 
+// The hero button leads back to an open plan instead of starting again
+function syncHeroCta() {
+  const span = document.querySelector("#hero-start-btn span");
+  if (!span) return;
+  const tr = currentLanguage === "tr";
+  span.textContent = planVisible ? (tr ? "Planıma git" : "Go to my plan") : (tr ? "Planımı oluştur" : "Build my plan");
+}
+
 function saveState() {
+  syncHeroCta();
   try {
     localStorage.setItem(STATE_KEY, JSON.stringify({
       v: 1, userState, planVisible, activeDayIndex, currentStep, lang: currentLanguage
@@ -452,6 +461,7 @@ function setLanguage(lang) {
   if (currentItinerary) {
     renderItinerary(currentItinerary);
   }
+  syncHeroCta();
 }
 
 function initTranslations() {
@@ -535,7 +545,7 @@ function initWizardNavigation() {
 
   if (heroStartBtn) {
     heroStartBtn.addEventListener("click", () => {
-      const target = document.getElementById(currentItinerary ? "itinerary-section" : "wizard-section");
+      const target = document.getElementById(planVisible && currentItinerary ? "itinerary-section" : "wizard-section");
       if (target) target.scrollIntoView({ behavior: "smooth" });
     });
   }
@@ -1264,8 +1274,8 @@ function renderStayCard(itinerary, container) {
   const lead = stay.isDayTrip
     ? (isTr ? "Bu gün genelde günübirlik gezilir; geceyi önceki gün kaldığın yerde geçirebilirsin." : "This is usually a day trip, so you can sleep where you stayed the night before.")
     : (isTr
-      ? `${range} için tek bir yerde kal: duraklarının çoğu ${escapeHtml(stay.neighborhood)} çevresinde.`
-      : `Stay in one place for ${range}: most of your stops are around ${escapeHtml(stay.neighborhood)}.`);
+      ? `${range} için tek bir otel yeter; duraklarının çoğu bu bölgede.`
+      : `One hotel works for ${range}; most of your stops are in this area.`);
 
   const card = document.createElement("section");
   card.className = "stay-card";
@@ -1328,7 +1338,7 @@ function renderStayCard(itinerary, container) {
       <svg class="stay-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20V8"/><path d="M3 16h18v4"/><path d="M21 16v-4a3 3 0 0 0-3-3h-7v7"/><circle cx="7" cy="12" r="2"/></svg>
       <div>
         <h3 id="stay-title">${isTr ? "Nerede kalınır?" : "Where to stay"}</h3>
-        <p class="stay-area">${escapeHtml(stay.query)}</p>
+        <p class="stay-area">${escapeHtml(stay.neighborhood)}</p>
       </div>
     </div>
     <p class="stay-lead">${lead}</p>
