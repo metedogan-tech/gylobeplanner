@@ -29,6 +29,8 @@ function syncHeroCta() {
   if (!span) return;
   const tr = currentLanguage === "tr";
   span.textContent = planVisible ? (tr ? "Planıma git" : "Go to my plan") : (tr ? "Planımı oluştur" : "Build my plan");
+  // Budget cards show the money sign of the page language
+  document.querySelectorAll(".budget-mark").forEach((m, i) => { m.textContent = (tr ? "₺" : "€").repeat(i + 1); });
 }
 
 function saveState() {
