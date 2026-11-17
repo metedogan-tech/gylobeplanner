@@ -454,9 +454,6 @@ fieldset { min-width: 0; width: 100%; border: 0; padding: 0; margin: 0; }
 .budget-head h3 { font-weight: 900; font-size: 1.35rem; line-height: 1.15; }
 .budget-sub { color: var(--muted); font-size: 0.88rem; margin-top: 2px; }
 .budget-total { text-align: right; }
-.cur-pick { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 0.85rem; margin-left: auto; }
-.cur-pick select { font: inherit; font-weight: 600; padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); max-width: 210px; }
-.cur-pick select:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .budget-total strong { display: block; font-weight: 900; font-size: 2rem; line-height: 1; letter-spacing: -0.02em; }
 .budget-total span { color: var(--muted); font-size: 0.88rem; font-weight: 700; }
 .budget-rows { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
@@ -470,7 +467,6 @@ fieldset { min-width: 0; width: 100%; border: 0; padding: 0; margin: 0; }
   .budget-rows li { grid-template-columns: 1fr auto; }
   .budget-bar { grid-column: 1 / -1; order: 3; }
   .budget-total { text-align: left; }
-  .cur-pick { margin-left: 0; order: 3; }
 }
 
 /* ---------- print view ---------- */
@@ -516,4 +512,22 @@ fieldset { min-width: 0; width: 100%; border: 0; padding: 0; margin: 0; }
   .day-header h3 { font-size: 1.3rem; }
   .day-stats { gap: 8px 18px; }
   .day-stats strong { font-size: 1.1rem; }
+}
+
+/* ---------- currency menu (top bar) ---------- */
+.cur-wrap { position: relative; display: inline-flex; }
+.cur-btn { height: 36px; padding: 0 12px; border-radius: 999px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink);
+  font: inherit; font-weight: 800; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+.cur-btn:hover { background: var(--inverse-bg); color: var(--inverse-fg); }
+.cur-btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.cur-menu { min-width: 240px; max-height: min(70vh, 460px); overflow-y: auto; }
+.cur-menu button { display: flex; align-items: baseline; gap: 10px; }
+.cur-menu .cur-code { font-weight: 900; min-width: 34px; }
+.cur-menu .cur-name { font-weight: 600; color: var(--muted); }
+.cur-menu .is-current { background: var(--paper); }
+.cur-menu .is-current .cur-name { color: var(--ink); }
+.cur-group { padding: 8px 12px 4px; font-size: 0.75rem; font-weight: 800; color: var(--muted); }
+@media (max-width: 420px) {
+  .cur-btn { padding: 0 9px; font-size: 0.8rem; }
+  .cur-menu { position: fixed; left: 12px; right: 12px; top: 64px; min-width: 0; }
 }

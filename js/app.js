@@ -145,7 +145,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initActionButtons();
   initThemeToggle();
   initTripBar();
-  loadRates().then(() => { if (planVisible && currentItinerary) renderItinerary(currentItinerary); });
+  initCurrencyNav();
+  loadRates().then(() => { renderCurrencyNav(); if (planVisible && currentItinerary) renderItinerary(currentItinerary); });
   selectCountry(userState.country);
   safeCreateIcons();
 
@@ -326,6 +327,7 @@ function selectCountry(countryId) {
 
   userState.country = countryId;
   saveState();
+  renderCurrencyNav();
   const isTr = currentLanguage === "tr";
   const name = isTr ? country.nameTr : country.nameEn;
 
@@ -464,6 +466,7 @@ function setLanguage(lang) {
     renderItinerary(currentItinerary);
   }
   syncHeroCta();
+  renderCurrencyNav();
 }
 
 function initTranslations() {
@@ -1204,19 +1207,6 @@ async function renderBudget(itinerary) {
           ? `${est.people} kişi, ${itinerary.days.length} gün, ${({ economy: "ekonomik", moderate: "dengeli", luxury: "konforlu" })[userState.budget]} bütçe`
           : `${est.people} ${est.people === 1 ? "person" : "people"}, ${itinerary.days.length} days, ${userState.budget} budget`}</p>
       </div>
-      <label class="cur-pick">
-        <span>${isTr ? "Para birimi" : "Currency"}</span>
-        <select id="currency-select">
-          ${(() => {
-            const all = currencyOptions(itinerary.country.id);
-            const local = LOCAL_CURRENCY[itinerary.country.id];
-            const top = all.slice(0, local && !["EUR", "TRY", "USD", "GBP"].includes(local) ? 5 : 4);
-            const opt = (c) => `<option value="${c}"${c === activeCurrency() ? " selected" : ""}>${c}, ${CURRENCY_NAMES[c][isTr ? 0 : 1]}</option>`;
-            return `<optgroup label="${isTr ? "Sık kullanılanlar" : "Common"}">${top.map(opt).join("")}</optgroup>` +
-              `<optgroup label="${isTr ? "Diğer para birimleri" : "Other currencies"}">${all.slice(top.length).map(opt).join("")}</optgroup>`;
-          })()}
-        </select>
-      </label>
       <div class="budget-total">
         <strong>${formatMoney(est.total, isTr)}</strong>
         ${est.people > 1 ? `<span>${isTr ? `kişi başı ${formatMoney(est.perPerson, isTr)}` : `${formatMoney(est.perPerson, isTr)} per person`}</span>` : ""}
@@ -1233,14 +1223,60 @@ async function renderBudget(itinerary) {
     <p class="budget-note">${isTr
       ? `Uçak bileti hariç. Konaklama için ${hotelSrc} kullanıldı; giriş ücretleri ve yemek yaklaşık değerlerdir. Otel seçince ya da yer değiştirince hesap güncellenir.`
       : `Flights not included. Stay uses ${hotelSrc}; tickets and food are approximate. Picking a hotel or swapping places updates it.`}${rateNote(isTr)}</p>`;
-  const sel = box.querySelector("#currency-select");
-  sel.addEventListener("change", () => {
-    userState.currency = sel.value;
-    saveState();
-    renderItinerary(currentItinerary);
-    const again = document.getElementById("currency-select");
-    if (again) again.focus();
+}
+
+// ---------- currency menu in the top bar ----------
+function currencySymbol(c) {
+  try {
+    const part = new Intl.NumberFormat("en", { style: "currency", currency: c, currencyDisplay: "narrowSymbol" })
+      .formatToParts(0).find(x => x.type === "currency");
+    return part && part.value !== c ? part.value : "";
+  } catch (e) { return ""; }
+}
+function renderCurrencyNav() {
+  const btn = document.getElementById("currency-btn");
+  const menu = document.getElementById("currency-menu");
+  if (!btn || !menu) return;
+  const isTr = currentLanguage === "tr";
+  const cur = activeCurrency();
+  const sym = currencySymbol(cur);
+  btn.textContent = `${sym ? sym + " " : ""}${cur}`;
+  btn.setAttribute("aria-label", `${isTr ? "Para birimi" : "Currency"}: ${CURRENCY_NAMES[cur][isTr ? 0 : 1]}`);
+  const all = currencyOptions(userState.country);
+  const local = LOCAL_CURRENCY[userState.country];
+  const topN = local && !["EUR", "TRY", "USD", "GBP"].includes(local) ? 5 : 4;
+  const item = (c) => `<button type="button" role="menuitemradio" aria-checked="${c === cur}" data-cur="${c}"${c === cur ? ' class="is-current"' : ""}>
+      <span class="cur-code">${c}</span><span class="cur-name">${CURRENCY_NAMES[c][isTr ? 0 : 1]}</span></button>`;
+  menu.setAttribute("role", "menu");
+  menu.innerHTML = `<p class="cur-group">${isTr ? "Sık kullanılanlar" : "Common"}</p>${all.slice(0, topN).map(item).join("")}
+    <p class="cur-group">${isTr ? "Diğer para birimleri" : "Other currencies"}</p>${all.slice(topN).map(item).join("")}`;
+}
+function initCurrencyNav() {
+  const btn = document.getElementById("currency-btn");
+  const menu = document.getElementById("currency-menu");
+  if (!btn || !menu) return;
+  const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = menu.hidden;
+    renderCurrencyNav();
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) { const cur = menu.querySelector(".is-current"); if (cur) cur.focus(); }
   });
+  document.addEventListener("click", (e) => { if (!menu.contains(e.target) && e.target !== btn) close(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { close(); btn.focus(); } });
+  menu.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-cur]");
+    if (!b) return;
+    userState.currency = b.dataset.cur;
+    saveState();
+    close();
+    renderCurrencyNav();
+    if (planVisible && currentItinerary) renderItinerary(currentItinerary);
+    btn.focus();
+  });
+  renderCurrencyNav();
 }
 
 function rateNote(isTr) {
