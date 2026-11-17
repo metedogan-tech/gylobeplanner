@@ -492,9 +492,9 @@ const CURRENCY_NAMES = {
   THB: ["Tayland bahtı", "Thai baht"], BRL: ["Brezilya reali", "Brazilian real"], CHF: ["İsviçre frangı", "Swiss franc"],
   CZK: ["Çek korunası", "Czech koruna"], NOK: ["Norveç kronu", "Norwegian krone"], ISK: ["İzlanda kronu", "Icelandic króna"]
 };
-// Used only if no live rate can be fetched (rough, late 2026)
-const FALLBACK_RATES = { EUR: 1, USD: 1.16, GBP: 0.87, TRY: 49.5, JPY: 178, EGP: 55, AED: 4.26, THB: 37.5, BRL: 6.2,
-  CHF: 0.93, CZK: 24.3, NOK: 11.7, ISK: 145 };
+// Used only if no live rate can be fetched (rates of 17 Nov 2026)
+const FALLBACK_RATES = { EUR: 1, USD: 1.1, GBP: 0.834, TRY: 55.5, JPY: 176, EGP: 59.1, AED: 4.04, THB: 37.3, BRL: 6.29,
+  CHF: 0.924, CZK: 24.4, NOK: 10.6, ISK: 137 };
 const FX = { rates: Object.assign({}, FALLBACK_RATES), live: false, date: "" };
 const FX_CACHE_KEY = "gp_fx_v1";
 
