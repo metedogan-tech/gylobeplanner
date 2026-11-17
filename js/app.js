@@ -11,13 +11,54 @@ const userState = {
   interests: ["history", "food", "views"],
   pace: "balanced",
   budget: "moderate",
-  startDate: (() => {
-    try {
-      const v = localStorage.getItem("gp_start_date") || "";
-      return v && v >= new Date().toISOString().slice(0, 10) ? v : "";
-    } catch (e) { return ""; }
-  })()
+  startDate: "",
+  hotels: {},        // stay area key -> { name, lat, lng, address, source }
+  bookingMode: {}    // stay area key -> "own" (has a booking) | "none" (wants suggestions)
 };
+
+// ---------- Remember where the traveller left off (survives a page refresh) ----------
+const STATE_KEY = "gp_state_v1";
+let planVisible = false;
+
+function saveState() {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify({
+      v: 1, userState, planVisible, activeDayIndex, currentStep, lang: currentLanguage
+    }));
+  } catch (e) { /* storage unavailable: nothing to do */ }
+}
+
+function loadSavedState() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STATE_KEY) || "null");
+    if (!raw || raw.v !== 1 || !raw.userState) return null;
+    const u = raw.userState;
+    if (u.country && COUNTRIES_REGISTRY.some(c => c.id === u.country)) userState.country = u.country;
+    if ([1, 2, 3, 5, 7].includes(u.days)) userState.days = u.days;
+    if (["solo", "couple", "family", "friends"].includes(u.travelerType)) userState.travelerType = u.travelerType;
+    if (Array.isArray(u.interests) && u.interests.length) userState.interests = u.interests.filter(i => ["history", "food", "views", "bazaars", "art", "nightlife"].includes(i));
+    if (!userState.interests.length) userState.interests = ["history", "food", "views"];
+    if (["relaxed", "balanced", "fast"].includes(u.pace)) userState.pace = u.pace;
+    if (["economy", "moderate", "luxury"].includes(u.budget)) userState.budget = u.budget;
+    const today = new Date().toISOString().slice(0, 10);
+    userState.startDate = typeof u.startDate === "string" && u.startDate >= today ? u.startDate : "";
+    userState.hotels = u.hotels && typeof u.hotels === "object" ? u.hotels : {};
+    userState.bookingMode = u.bookingMode && typeof u.bookingMode === "object" ? u.bookingMode : {};
+    return raw;
+  } catch (e) { return null; }
+}
+
+// Make the wizard cards show the saved choices
+function syncSelectionUI() {
+  document.querySelectorAll("[data-pref]").forEach(card => {
+    const pref = card.dataset.pref, val = card.dataset.val;
+    let on;
+    if (pref === "interests") on = userState.interests.includes(val);
+    else if (pref === "days") on = String(userState.days) === val;
+    else on = userState[pref] === val;
+    card.classList.toggle("selected", !!on);
+  });
+}
 
 let currentItinerary = null;
 let activeDayIndex = 0;
@@ -56,6 +97,8 @@ function normalizeStr(str) {
 const planner = new UniversalTripPlanner(CURATED_DESTINATIONS, COUNTRIES_REGISTRY);
 
 document.addEventListener("DOMContentLoaded", () => {
+  const saved = loadSavedState();
+  if (saved && (saved.lang === "en" || saved.lang === "tr")) currentLanguage = saved.lang;
   initTranslations();
   initLanguageSwitcher();
   initDestinationSelector();
@@ -68,6 +111,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // Dynamically update country count label (e.g. "20+")
   const countLabel = document.getElementById("country-count-label");
   if (countLabel) countLabel.textContent = getCountryCountLabel();
+
+  // Continue where the traveller left off
+  syncSelectionUI();
+  if (saved) {
+    if (saved.planVisible) {
+      generateAndDisplayPlan({ restore: true, dayIndex: saved.activeDayIndex });
+    } else if (saved.currentStep > 1 && saved.currentStep <= totalSteps) {
+      goToStep(saved.currentStep);
+    }
+  }
 });
 
 // Country count shown as a rounded-down "N+" label (33 -> "30+", 44 -> "40+")
@@ -206,6 +259,7 @@ function selectCountry(countryId) {
   if (!country) return;
 
   userState.country = countryId;
+  saveState();
   const isTr = currentLanguage === "tr";
   const name = isTr ? country.nameTr : country.nameEn;
 
@@ -307,6 +361,7 @@ function renderSurvivalGuide() {
 // Translation Management
 function setLanguage(lang) {
   currentLanguage = lang;
+  saveState();
   document.documentElement.lang = lang;
   document.title = lang === "tr" 
     ? "GlobePlanner - Akıllı Dünya Seyahat & Tatil Planlayıcı" 
@@ -363,6 +418,7 @@ function initOptionSelections() {
       document.querySelectorAll("[data-pref='days']").forEach(c => c.classList.remove("selected"));
       card.classList.add("selected");
       userState.days = parseInt(card.dataset.val, 10);
+      saveState();
     });
   });
 
@@ -372,6 +428,7 @@ function initOptionSelections() {
       document.querySelectorAll("[data-pref='travelerType']").forEach(c => c.classList.remove("selected"));
       card.classList.add("selected");
       userState.travelerType = card.dataset.val;
+      saveState();
     });
   });
 
@@ -388,6 +445,7 @@ function initOptionSelections() {
         userState.interests.push(val);
         card.classList.add("selected");
       }
+      saveState();
     });
   });
 
@@ -397,6 +455,7 @@ function initOptionSelections() {
       document.querySelectorAll("[data-pref='pace']").forEach(c => c.classList.remove("selected"));
       card.classList.add("selected");
       userState.pace = card.dataset.val;
+      saveState();
     });
   });
 
@@ -406,6 +465,7 @@ function initOptionSelections() {
       document.querySelectorAll("[data-pref='budget']").forEach(c => c.classList.remove("selected"));
       card.classList.add("selected");
       userState.budget = card.dataset.val;
+      saveState();
     });
   });
 }
@@ -451,6 +511,7 @@ function initWizardNavigation() {
 
 function goToStep(step) {
   currentStep = step;
+  saveState();
 
   // Show/hide step panels
   for (let i = 1; i <= totalSteps; i++) {
@@ -493,28 +554,44 @@ function goToStep(step) {
 }
 
 // Generate & Render Itinerary
-function generateAndDisplayPlan() {
-  currentItinerary = planner.generateItinerary(userState);
-  activeDayIndex = 0;
+function buildCurrentItinerary() {
+  return applyHotelRouting(planner.generateItinerary(userState), userState.hotels);
+}
+
+function generateAndDisplayPlan(opts) {
+  opts = opts || {};
+  currentItinerary = buildCurrentItinerary();
+  activeDayIndex = opts.restore && opts.dayIndex >= 0 && opts.dayIndex < currentItinerary.days.length ? opts.dayIndex : 0;
 
   // Hide Wizard, Show Plan
   document.getElementById("wizard-section").classList.add("hidden");
   const planSection = document.getElementById("itinerary-section");
   planSection.classList.remove("hidden");
+  planVisible = true;
+  saveState();
 
-  // Confetti celebration if available
-  try {
-    if (typeof confetti === "function") {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
-    }
-  } catch (e) {}
+  if (!opts.restore) {
+    try {
+      if (typeof confetti === "function") confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+    } catch (e) {}
+  }
 
   renderItinerary(currentItinerary);
-  planSection.scrollIntoView({ behavior: "smooth" });
+  if (opts.restore) {
+    setTimeout(() => planSection.scrollIntoView({ behavior: "auto" }), 50);
+  } else {
+    planSection.scrollIntoView({ behavior: "smooth" });
+  }
+}
+
+// Re-plan after the hotel changes, keeping the open day
+function refreshPlanKeepingDay() {
+  if (!currentItinerary) return;
+  const keep = activeDayIndex;
+  currentItinerary = buildCurrentItinerary();
+  activeDayIndex = Math.min(keep, currentItinerary.days.length - 1);
+  saveState();
+  renderItinerary(currentItinerary);
 }
 
 const SLOT_LABELS = {
@@ -584,6 +661,7 @@ function renderItinerary(itinerary) {
     tab.innerHTML = `<span class="line-badge">${day.dayNumber}</span><span class="day-tab-name">${escapeHtml(day.neighborhood)}</span>`;
     tab.addEventListener("click", () => {
       activeDayIndex = idx;
+      saveState();
       renderItinerary(itinerary);
     });
     tabsContainer.appendChild(tab);
@@ -603,7 +681,7 @@ function renderItinerary(itinerary) {
     </div>
     <div class="day-stats">
       <div><strong>${activeDay.stats.stopsCount}</strong><span>${isTr ? "durak" : "stops"}</span></div>
-      <div><strong>~${activeDay.stats.walkingKm} km</strong><span>${isTr ? "yürüyüş" : "walking"}</span></div>
+      <div><strong>~${String(activeDay.stats.walkingKm).replace(".", isTr ? "," : ".")} km</strong><span>${isTr ? "toplam yol" : "total distance"}</span></div>
       <div><strong>~${activeDay.stats.estimatedHours} sa</strong><span>${isTr ? "toplam süre" : "in total"}</span></div>
     </div>
   `;
@@ -611,6 +689,32 @@ function renderItinerary(itinerary) {
 
   const line = document.createElement("div");
   line.className = "stops";
+  const hotel = activeDay.hotel;
+
+  const legHtml = (leg, extraClass) => `
+    <div class="leg-body">
+      <p class="leg-text">${escapeHtml(leg.text)}</p>
+      ${leg.arrival ? `<p class="leg-arrival">${escapeHtml(leg.arrival)}</p>` : ""}
+      <a class="leg-link" href="${leg.url}" target="_blank" rel="noopener">${isTr ? "Google Haritalar'da yol tarifi" : "Directions in Google Maps"}</a>
+    </div>`;
+
+  // Start of the day at the hotel
+  if (hotel) {
+    const first = activeDay.stops[0] && activeDay.stops[0].place;
+    const startEl = document.createElement("div");
+    startEl.className = "stop stop-hotel";
+    startEl.innerHTML = `
+      <span class="stop-node hotel-node" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 20V8"/><path d="M3 16h18v4"/><path d="M21 16v-4a3 3 0 0 0-3-3h-7v7"/><circle cx="7" cy="12" r="2"/></svg></span>
+      <div class="hotel-start"><span class="hotel-start-label">${isTr ? "Güne otelinden başla" : "Start at your hotel"}</span><strong>${escapeHtml(hotel.name)}</strong></div>`;
+    line.appendChild(startEl);
+    if (first) {
+      const leg = describeLeg(hotel, first, isTr);
+      const legEl = document.createElement("div");
+      legEl.className = "leg";
+      legEl.innerHTML = legHtml(leg);
+      line.appendChild(legEl);
+    }
+  }
 
   activeDay.stops.forEach((stop, idx) => {
     const p = stop.place;
@@ -630,38 +734,60 @@ function renderItinerary(itinerary) {
         <div class="stop-body">
           <div class="stop-meta">
             <span class="slot">${isTr ? slot.tr : slot.en}</span>
-            <span>${isTr ? `yaklaşık ${p.durationHours} saat` : `about ${p.durationHours} h`}</span>
+            <span>${isTr ? `burada yaklaşık ${p.durationHours} saat` : `about ${p.durationHours} h here`}</span>
           </div>
           <h4 class="stop-title">${escapeHtml(name)}</h4>
           <p class="stop-desc">${escapeHtml(isTr ? p.descTr : p.descEn)}</p>
           <div class="tags">${tags}<span class="tag tag-budget">${budgetLabel(p, isTr)}</span></div>
           <p class="tip"><strong>${isTr ? "İpucu:" : "Tip:"}</strong> ${escapeHtml(isTr ? p.insiderTipTr : p.insiderTipEn)}</p>
-          <p class="how"><strong>${isTr ? "Ulaşım:" : "Getting there:"}</strong> ${escapeHtml(isTr ? p.transitTr : p.transitEn)}</p>
+          <p class="how"><strong>${isTr ? "En yakın durak:" : "Nearest stop:"}</strong> ${escapeHtml(isTr ? p.transitTr : p.transitEn)}</p>
         </div>
       </article>
     `;
     line.appendChild(el);
 
-    if (stop.transitToNext) {
-      const leg = document.createElement("div");
-      leg.className = "leg";
-      leg.innerHTML = `<p>${escapeHtml(isTr ? stop.transitToNext.tr : stop.transitToNext.en)}</p>`;
-      line.appendChild(leg);
+    const next = activeDay.stops[idx + 1];
+    if (next) {
+      const leg = describeLeg(p, next.place, isTr);
+      const legEl = document.createElement("div");
+      legEl.className = "leg";
+      legEl.innerHTML = legHtml(leg);
+      line.appendChild(legEl);
     }
   });
+
+  // Back to the hotel at the end of the day
+  if (hotel && activeDay.stops.length) {
+    const last = activeDay.stops[activeDay.stops.length - 1].place;
+    const back = describeLeg(last, hotel, isTr);
+    back.arrival = "";
+    const legEl = document.createElement("div");
+    legEl.className = "leg";
+    legEl.innerHTML = legHtml(back);
+    line.appendChild(legEl);
+    const endEl = document.createElement("div");
+    endEl.className = "stop stop-hotel";
+    endEl.innerHTML = `
+      <span class="stop-node hotel-node" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 20V8"/><path d="M3 16h18v4"/><path d="M21 16v-4a3 3 0 0 0-3-3h-7v7"/><circle cx="7" cy="12" r="2"/></svg></span>
+      <div class="hotel-start"><span class="hotel-start-label">${isTr ? "Günün sonu: otele dönüş" : "End of the day: back to the hotel"}</span><strong>${escapeHtml(hotel.name)}</strong></div>`;
+    line.appendChild(endEl);
+  }
 
   contentContainer.appendChild(line);
   hydratePlaceImages(line);
   renderStayCard(itinerary, contentContainer);
-  updateMap(activeDay.stops, country, activeDay.color);
+  updateMap(activeDay.stops, country, activeDay.color, activeDay.hotel);
 }
 
-// "Where to stay" for the active day: links to booking sites, pre-filled
+// "Where to stay" for the active day
 function renderStayCard(itinerary, container) {
   if (typeof getStayForDay !== "function") return;
   const stay = getStayForDay(itinerary, activeDayIndex);
   if (!stay) return;
   const isTr = currentLanguage === "tr";
+  const key = stayKey(itinerary, stay);
+  const hotel = userState.hotels[key];
+  const mode = hotel ? "own" : userState.bookingMode[key] || "";
   const links = buildStayLinks(stay, userState, currentLanguage);
 
   const range = stay.firstDay === stay.lastDay
@@ -670,26 +796,69 @@ function renderStayCard(itinerary, container) {
   const guests = isTr
     ? `${links.adults} yetişkin, ${links.rooms} oda`
     : `${links.adults} adult${links.adults > 1 ? "s" : ""}, ${links.rooms} room${links.rooms > 1 ? "s" : ""}`;
-  const budgetNote = {
-    economy: isTr ? "Booking'de sonuçlar en ucuzdan başlayarak sıralanır." : "Booking results are sorted cheapest first.",
-    moderate: isTr ? "Booking'de 8 ve üzeri puanlı yerler gösterilir." : "Booking shows places rated 8+.",
-    luxury: isTr ? "Booking'de 4 ve 5 yıldızlı oteller gösterilir." : "Booking shows 4- and 5-star hotels."
-  }[userState.budget] || "";
 
-  let lead;
-  if (stay.isDayTrip) {
-    lead = isTr
-      ? `Bu gün genelde günübirlik gezilir; geceyi önceki gün kaldığın yerde geçirebilirsin. Yine de burada kalmak istersen:`
-      : `This is usually a day trip, so you can sleep where you stayed the night before. If you'd rather stay here:`;
-  } else {
-    lead = isTr
-      ? `${range} için tek bir yerde kal: duraklarının çoğu ${escapeHtml(stay.neighborhood)} çevresinde, böylece her sabah yürüyerek başlarsın.`
-      : `Stay in one place for ${range}: most of your stops are around ${escapeHtml(stay.neighborhood)}, so each morning starts on foot.`;
-  }
+  const lead = stay.isDayTrip
+    ? (isTr ? "Bu gün genelde günübirlik gezilir; geceyi önceki gün kaldığın yerde geçirebilirsin." : "This is usually a day trip, so you can sleep where you stayed the night before.")
+    : (isTr
+      ? `${range} için tek bir yerde kal: duraklarının çoğu ${escapeHtml(stay.neighborhood)} çevresinde.`
+      : `Stay in one place for ${range}: most of your stops are around ${escapeHtml(stay.neighborhood)}.`);
 
   const card = document.createElement("section");
   card.className = "stay-card";
   card.setAttribute("aria-labelledby", "stay-title");
+
+  let body = "";
+  if (hotel) {
+    body = `
+      <div class="my-hotel">
+        <div>
+          <span class="my-hotel-label">${isTr ? "Otelin" : "Your hotel"}</span>
+          <strong>${escapeHtml(hotel.name)}</strong>
+          ${hotel.address ? `<span class="my-hotel-addr">${escapeHtml(hotel.address)}</span>` : ""}
+        </div>
+        <div class="my-hotel-actions">
+          <button type="button" class="link-btn" data-act="change">${isTr ? "Değiştir" : "Change"}</button>
+          <button type="button" class="link-btn" data-act="remove">${isTr ? "Kaldır" : "Remove"}</button>
+        </div>
+      </div>
+      <p class="stay-note">${isTr ? `${range} rotası bu otelden başlıyor ve burada bitiyor; ilk ve son durağa nasıl gideceğin planda yazıyor.` : `The route for ${range} starts and ends at this hotel; the plan shows how to reach the first and last stops.`}</p>`;
+  } else {
+    body = `
+      <div class="booking-q" role="group" aria-label="${isTr ? "Rezervasyon durumu" : "Booking status"}">
+        <span class="booking-q-label">${isTr ? "Kalacak yerin belli mi?" : "Do you have a place to stay?"}</span>
+        <button type="button" class="chip${mode === "own" ? " is-on" : ""}" data-act="mode-own">${isTr ? "Rezervasyonum var" : "I have a booking"}</button>
+        <button type="button" class="chip${mode === "none" ? " is-on" : ""}" data-act="mode-none">${isTr ? "Henüz yok" : "Not yet"}</button>
+      </div>`;
+    if (mode === "own") {
+      body += `
+        <form class="hotel-search" novalidate>
+          <label for="hotel-query">${isTr ? "Otelinin adı ya da adresi" : "Your hotel's name or address"}</label>
+          <div class="hotel-search-row">
+            <input id="hotel-query" type="text" autocomplete="off" placeholder="${isTr ? "Örn. Pera Palace" : "e.g. Pera Palace"}">
+            <button type="submit" class="btn btn-primary">${isTr ? "Otelimi bul" : "Find my hotel"}</button>
+          </div>
+          <div class="hotel-results" aria-live="polite"></div>
+        </form>`;
+    } else if (mode === "none") {
+      body += `
+        <div class="stay-form">
+          <label class="stay-date">
+            <span>${isTr ? "Varış tarihi" : "Arrival date"}</span>
+            <input type="date" id="stay-start-date" value="${userState.startDate || ""}">
+          </label>
+          <p class="stay-summary">${guests}${links.checkin ? `; ${new Date(links.checkin + "T12:00:00").toLocaleDateString(isTr ? "tr-TR" : "en-GB", { day: "numeric", month: "long" })}, ${stay.nights} ${isTr ? "gece" : stay.nights > 1 ? "nights" : "night"}` : ""}</p>
+        </div>
+        <h4 class="hotel-list-title">${isTr ? `${escapeHtml(stay.neighborhood)} çevresindeki oteller` : `Hotels around ${escapeHtml(stay.neighborhood)}`}</h4>
+        <div class="hotel-list" aria-live="polite"><p class="stay-note">${isTr ? "Oteller yükleniyor…" : "Loading hotels…"}</p></div>
+        <div class="stay-links">
+          <a class="btn btn-ghost" href="${links.booking}" target="_blank" rel="noopener">${isTr ? "Bölgedeki tüm oteller (Booking)" : "All hotels in the area (Booking)"}</a>
+          <a class="btn btn-ghost" href="${links.google}" target="_blank" rel="noopener">${isTr ? "Google'da puan ve fiyatlar" : "Ratings and prices on Google"}</a>
+          <a class="btn btn-ghost" href="${links.airbnb}" target="_blank" rel="noopener">${isTr ? "Airbnb'de evler" : "Homes on Airbnb"}</a>
+        </div>
+        <p class="stay-note">${isTr ? "Oteller OpenStreetMap'ten geliyor. Güncel fiyat ve misafir puanlarını Booking ya da Google'da görürsün." : "Hotels come from OpenStreetMap. You'll see live prices and guest ratings on Booking or Google."}</p>`;
+    }
+  }
+
   card.innerHTML = `
     <div class="stay-head">
       <svg class="stay-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20V8"/><path d="M3 16h18v4"/><path d="M21 16v-4a3 3 0 0 0-3-3h-7v7"/><circle cx="7" cy="12" r="2"/></svg>
@@ -699,34 +868,138 @@ function renderStayCard(itinerary, container) {
       </div>
     </div>
     <p class="stay-lead">${lead}</p>
-    <div class="stay-form">
-      <label class="stay-date">
-        <span>${isTr ? "Varış tarihi" : "Arrival date"}</span>
-        <input type="date" id="stay-start-date" value="${userState.startDate || ""}">
-      </label>
-      <p class="stay-summary">${guests}${links.checkin ? `; ${isTr ? "giriş" : "check-in"} ${new Date(links.checkin + "T12:00:00").toLocaleDateString(isTr ? "tr-TR" : "en-GB", { day: "numeric", month: "long" })}, ${stay.nights} ${isTr ? "gece" : stay.nights > 1 ? "nights" : "night"}` : ""}</p>
-    </div>
-    <div class="stay-links">
-      <a class="btn btn-primary" href="${links.booking}" target="_blank" rel="noopener">${isTr ? "Booking'de otellere bak" : "See hotels on Booking"}</a>
-      <a class="btn btn-ghost" href="${links.google}" target="_blank" rel="noopener">${isTr ? "Google'da puan ve fiyatlar" : "Ratings and prices on Google"}</a>
-      <a class="btn btn-ghost" href="${links.airbnb}" target="_blank" rel="noopener">${isTr ? "Airbnb'de evler" : "Homes on Airbnb"}</a>
-    </div>
-    <p class="stay-note">${budgetNote} ${isTr ? "Güncel fiyat ve puanları o sitelerde görürsün; tarihleri orada da değiştirebilirsin." : "You'll see live prices and ratings on those sites, and can change the dates there."}</p>
+    ${body}
   `;
   container.appendChild(card);
+
+  const rerender = (focusSel) => {
+    card.remove();
+    renderStayCard(itinerary, container);
+    const el = focusSel && container.querySelector(focusSel);
+    if (el) el.focus();
+  };
+  const setHotel = (h) => {
+    if (h) userState.hotels[key] = { name: h.name, lat: h.lat, lng: h.lng, address: h.address || "", source: h.source || "own" };
+    else delete userState.hotels[key];
+    saveState();
+    refreshPlanKeepingDay();
+  };
+
+  card.querySelectorAll("[data-act]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const act = btn.dataset.act;
+      if (act === "mode-own") { userState.bookingMode[key] = "own"; saveState(); rerender("#hotel-query"); }
+      if (act === "mode-none") { userState.bookingMode[key] = "none"; saveState(); rerender(); }
+      if (act === "change") { userState.bookingMode[key] = hotel.source === "suggested" ? "none" : "own"; setHotel(null); }
+      if (act === "remove") { userState.bookingMode[key] = ""; setHotel(null); }
+    });
+  });
 
   const dateInput = card.querySelector("#stay-start-date");
   if (dateInput) {
     dateInput.addEventListener("change", () => {
       userState.startDate = dateInput.value || "";
-      try { localStorage.setItem("gp_start_date", userState.startDate); } catch (e) { /* storage unavailable */ }
-      const old = container.querySelector(".stay-card");
-      if (old) old.remove();
-      renderStayCard(itinerary, container);
-      const again = container.querySelector("#stay-start-date");
-      if (again) again.focus();
+      saveState();
+      rerender("#stay-start-date");
     });
   }
+
+  // Own booking: find the hotel on the map
+  const form = card.querySelector(".hotel-search");
+  if (form) {
+    const results = form.querySelector(".hotel-results");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const q = form.querySelector("#hotel-query").value.trim();
+      if (q.length < 3) { results.innerHTML = `<p class="stay-note">${isTr ? "Otelin adını ya da adresini yaz." : "Type your hotel's name or address."}</p>`; return; }
+      results.innerHTML = `<p class="stay-note">${isTr ? "Aranıyor…" : "Searching…"}</p>`;
+      let found = [];
+      try {
+        found = await searchHotelByName(q + (stay.query ? ", " + stay.query.split(",").pop().trim() : ""), itinerary.country.id, currentLanguage);
+        if (!found.length) found = await searchHotelByName(q, itinerary.country.id, currentLanguage);
+      } catch (err) {
+        results.innerHTML = `<p class="stay-note">${isTr ? "Arama şu an yapılamadı. Birkaç saniye sonra tekrar dene." : "Search isn't available right now. Try again in a few seconds."}</p>`;
+        return;
+      }
+      if (!found.length) {
+        results.innerHTML = `<p class="stay-note">${isTr ? "Bu isimle bir yer bulunamadı. Otelin tam adını ya da sokak adresini dene." : "Nothing found with that name. Try the full hotel name or its street address."}</p>`;
+        return;
+      }
+      results.innerHTML = `<p class="stay-note">${isTr ? "Otelini seç:" : "Pick your hotel:"}</p>` + found.map((r, i) => `
+        <button type="button" class="hotel-result" data-i="${i}">
+          <strong>${escapeHtml(r.name)}</strong><span>${escapeHtml(r.address)}</span>
+        </button>`).join("");
+      results.querySelectorAll(".hotel-result").forEach(b => {
+        b.addEventListener("click", () => setHotel(found[+b.dataset.i]));
+      });
+    });
+  }
+
+  // No booking yet: real hotels around the area
+  const list = card.querySelector(".hotel-list");
+  if (list) loadHotelSuggestions(itinerary, stay, list, links, (h) => setHotel(Object.assign({}, h, { source: "suggested" })));
+}
+
+function stayCenter(itinerary, stay) {
+  const pts = [];
+  for (let i = stay.firstDay - 1; i <= stay.lastDay - 1; i++) {
+    itinerary.days[i].stops.forEach(s => { if (s.place.zone === stay.zoneKey) pts.push(s.place); });
+  }
+  if (!pts.length) for (let i = stay.firstDay - 1; i <= stay.lastDay - 1; i++) itinerary.days[i].stops.forEach(s => pts.push(s.place));
+  return { lat: pts.reduce((a, p) => a + p.lat, 0) / pts.length, lng: pts.reduce((a, p) => a + p.lng, 0) / pts.length };
+}
+
+async function loadHotelSuggestions(itinerary, stay, list, links, onPick) {
+  const isTr = currentLanguage === "tr";
+  const center = stayCenter(itinerary, stay);
+  let hotels = [];
+  try {
+    hotels = await fetchHotelsNear(center, 1200);
+    if (hotels.length < 4) hotels = await fetchHotelsNear(center, 3000);
+  } catch (e) {
+    list.innerHTML = `<p class="stay-note">${isTr ? "Otel listesi şu an yüklenemedi. Aşağıdaki linklerle bölgedeki otellere bakabilirsin." : "The hotel list couldn't load right now. Use the links below to see hotels in the area."}</p>`;
+    return;
+  }
+  const top = rankHotels(hotels, center, userState.budget).slice(0, 6);
+  if (!top.length) {
+    list.innerHTML = `<p class="stay-note">${isTr ? "Bu bölgede kayıtlı otel bulunamadı. Aşağıdaki linklerle aramaya devam edebilirsin." : "No hotels are listed in this area. Use the links below to keep searching."}</p>`;
+    return;
+  }
+  const kindLabel = k => ({
+    hotel: isTr ? "Otel" : "Hotel", hostel: "Hostel", guest_house: isTr ? "Pansiyon" : "Guest house", apartment: isTr ? "Daire" : "Apartment"
+  }[k] || (isTr ? "Otel" : "Hotel"));
+  const prefs = Object.assign({}, userState, { _checkin: links.checkin, _checkout: links.checkout });
+
+  list.innerHTML = top.map((h, i) => {
+    const dist = geoDistanceKm(center, h);
+    return `
+      <article class="hotel-card">
+        <div class="hotel-photo" data-i="${i}"><span class="photo-fallback" aria-hidden="true">${escapeHtml(h.name)}</span></div>
+        <div class="hotel-body">
+          <h5>${escapeHtml(h.name)}</h5>
+          <p class="hotel-meta">${kindLabel(h.kind)}${h.stars ? `, <span aria-label="${h.stars} ${isTr ? "yıldız" : "stars"}">${"★".repeat(h.stars)}</span>` : ""}</p>
+          <p class="hotel-meta">${isTr ? `Günün duraklarının merkezine ${formatDistance(dist, true)}` : `${formatDistance(dist, false)} from the centre of your stops`}</p>
+          <div class="hotel-actions">
+            <a class="btn btn-ghost btn-sm" href="${hotelBookingUrl(h, stay.query, prefs, currentLanguage)}" target="_blank" rel="noopener">${isTr ? "Fiyat ve puan" : "Price and rating"}</a>
+            <button type="button" class="btn btn-primary btn-sm" data-pick="${i}">${isTr ? "Burada kalacağım" : "I'll stay here"}</button>
+          </div>
+        </div>
+      </article>`;
+  }).join("");
+
+  list.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", () => onPick(top[+b.dataset.pick])));
+  top.forEach((h, i) => {
+    hotelPhoto(h).then(src => {
+      if (!src) return;
+      const box = list.querySelector(`.hotel-photo[data-i="${i}"]`);
+      if (!box) return;
+      const img = new Image();
+      img.alt = h.name;
+      img.referrerPolicy = "no-referrer";
+      img.onload = () => box.appendChild(img);
+      img.src = src;
+    });
+  });
 }
 
 // Hero: a live sample of day 1 for the selected country
@@ -770,7 +1043,7 @@ function updateHeroFacts() {
 }
 
 // Leaflet Map Controller
-function updateMap(stops, country, lineColor) {
+function updateMap(stops, country, lineColor, hotel) {
   const color = lineColor || "#2346D8";
   const mapElement = document.getElementById("map");
   if (!mapElement || typeof L === "undefined") return;
@@ -782,9 +1055,11 @@ function updateMap(stops, country, lineColor) {
     try {
       mapInstance = L.map("map").setView([defaultLat, defaultLng], country ? country.zoom || 13 : 13);
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      // CARTO "Voyager" basemap (OpenStreetMap data); free for light use with attribution
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
         maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
+        subdomains: "abcd",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
       }).addTo(mapInstance);
     } catch (e) {
       console.warn("Leaflet map initialization skipped:", e);
@@ -830,6 +1105,21 @@ function updateMap(stops, country, lineColor) {
     mapMarkers.push(marker);
   });
 
+  // The hotel: the day's route starts and ends there
+  if (hotel) {
+    const hIcon = L.divIcon({
+      className: "custom-pin-container",
+      html: `<div class="hotel-pin"><svg viewBox="0 0 24 24"><path d="M3 20V8"/><path d="M3 16h18v4"/><path d="M21 16v-4a3 3 0 0 0-3-3h-7v7"/><circle cx="7" cy="12" r="2"/></svg></div>`,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17]
+    });
+    const hm = L.marker([hotel.lat, hotel.lng], { icon: hIcon, zIndexOffset: 500 }).addTo(mapInstance);
+    hm.bindPopup(`<strong style="font-weight:800">${escapeHtml(hotel.name)}</strong>`);
+    mapMarkers.push(hm);
+    latLngs.unshift([hotel.lat, hotel.lng]);
+    latLngs.push([hotel.lat, hotel.lng]);
+  }
+
   // Polyline connecting the stops
   if (latLngs.length > 1) {
     routePolyline = L.polyline(latLngs, {
@@ -845,9 +1135,13 @@ function updateMap(stops, country, lineColor) {
     mapInstance.setView([country.lat, country.lng], country.zoom || 13);
   }
 
-  setTimeout(() => {
-    try { mapInstance.invalidateSize(); } catch (e) {}
-  }, 200);
+  // The plan section may have just become visible: make Leaflet re-measure, then re-fit
+  [100, 400].forEach(ms => setTimeout(() => {
+    try {
+      mapInstance.invalidateSize();
+      if (latLngs.length > 1) mapInstance.fitBounds(L.latLngBounds(latLngs), { padding: [40, 40] });
+    } catch (e) {}
+  }, ms));
 }
 
 // Action Buttons & Navigation Reset
@@ -856,6 +1150,7 @@ function resetToHomepage() {
   const wizardSection = document.getElementById("wizard-section");
   if (itinerarySection) itinerarySection.classList.add("hidden");
   if (wizardSection) wizardSection.classList.remove("hidden");
+  planVisible = false;
   goToStep(1);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -884,6 +1179,7 @@ function initActionButtons() {
     btnEdit.addEventListener("click", () => {
       document.getElementById("itinerary-section").classList.add("hidden");
       document.getElementById("wizard-section").classList.remove("hidden");
+      planVisible = false;
       goToStep(1);
       document.getElementById("wizard-section").scrollIntoView({ behavior: "smooth" });
     });
