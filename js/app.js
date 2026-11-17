@@ -116,6 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initOptionSelections();
   initActionButtons();
   initThemeToggle();
+  initTripBar();
   selectCountry(userState.country);
   safeCreateIcons();
 
@@ -594,7 +595,7 @@ function goToStep(step) {
 
 // Generate & Render Itinerary
 function finishItinerary(itinerary, hotels) {
-  return applyHotelRouting(applySwaps(itinerary), hotels);
+  return applyHotelRouting(applyClosures(applySwaps(itinerary), userState.startDate), hotels);
 }
 
 // Put the traveller's own picks in place of the places they swapped out
@@ -619,18 +620,16 @@ function applySwaps(itinerary) {
 }
 
 // Pick another place for one stop: same area, not already in the trip,
-// not one the traveller already turned down, similar time of day and interests
-function swapStop(dayIdx, stopIdx) {
+// not one the traveller already turned down, open on that date,
+// similar time of day and interests. opts.indoor: only indoor places.
+function pickReplacement(dayIdx, stopIdx, opts, used, rejected) {
+  opts = opts || {};
   const day = currentItinerary && currentItinerary.days[dayIdx];
   const stop = day && day.stops[stopIdx];
   const ds = CURATED_DESTINATIONS[userState.country];
   if (!stop || !ds) return null;
-
-  const used = new Set();
-  currentItinerary.days.forEach(d => d.stops.forEach(st => used.add(st.place.id)));
-  const rejected = new Set(userState.rejected || []);
-  rejected.add(stop.place.id);
-  if (stop.swappedFrom) rejected.add(stop.swappedFrom);
+  const date = tripDate(userState.startDate, dayIdx);
+  const weekday = date ? date.getDay() : null;
 
   const others = day.stops.filter((st, i) => i !== stopIdx).map(st => st.place);
   const ref = others.length ? {
@@ -638,7 +637,7 @@ function swapStop(dayIdx, stopIdx) {
     lng: others.reduce((t, p) => t + p.lng, 0) / others.length
   } : stop.place;
   const span = Math.max(0, ...day.stops.map(st => geoDistanceKm(ref, st.place)));
-  const maxKm = Math.max(5, span * 1.3);
+  const maxKm = Math.max(opts.indoor ? 7 : 5, span * 1.3);
   const budgetOk = (p) => {
     const t = p.budgetTier || [];
     if (userState.budget === "economy") return t.includes("economy");
@@ -650,6 +649,8 @@ function swapStop(dayIdx, stopIdx) {
   ds.places.forEach(p => {
     if (used.has(p.id) || rejected.has(p.id)) return;
     if (userState.travelerType === "family" && p.category.length === 1 && p.category[0] === "nightlife") return;
+    if (isClosedOn(p, weekday)) return;
+    if (opts.indoor && !isIndoor(p)) return;
     const km = geoDistanceKm(ref, p);
     if (km > maxKm) return;
     const score = p.category.filter(c => userState.interests.includes(c)).length * 15
@@ -659,14 +660,54 @@ function swapStop(dayIdx, stopIdx) {
       - (day.hotel ? geoDistanceKm(day.hotel, p) : 0);
     if (score > bestScore) { bestScore = score; best = p; }
   });
-  if (!best) return null;
+  return best;
+}
 
+function tripUsedIds() {
+  const used = new Set();
+  currentItinerary.days.forEach(d => d.stops.forEach(st => used.add(st.place.id)));
+  return used;
+}
+
+function recordSwap(stop, picked, rejected) {
+  rejected.add(stop.place.id);
+  if (stop.swappedFrom) rejected.add(stop.swappedFrom);
   const original = stop.swappedFrom || stop.place.id;
-  userState.swaps = Object.assign({}, userState.swaps, { [original]: best.id });
+  userState.swaps = Object.assign({}, userState.swaps, { [original]: picked.id });
   userState.rejected = [...rejected].slice(-200);
+}
+
+function swapStop(dayIdx, stopIdx) {
+  const stop = currentItinerary && currentItinerary.days[dayIdx] && currentItinerary.days[dayIdx].stops[stopIdx];
+  if (!stop) return null;
+  const rejected = new Set(userState.rejected || []);
+  rejected.add(stop.place.id);
+  if (stop.swappedFrom) rejected.add(stop.swappedFrom);
+  const best = pickReplacement(dayIdx, stopIdx, {}, tripUsedIds(), rejected);
+  if (!best) return null;
+  recordSwap(stop, best, rejected);
   lastSwappedId = best.id;
   refreshPlanKeepingDay();
   return best;
+}
+
+// Rainy day: trade the day's outdoor stops for indoor places nearby
+function makeDayIndoor(dayIdx) {
+  const day = currentItinerary && currentItinerary.days[dayIdx];
+  if (!day) return 0;
+  const used = tripUsedIds();
+  const rejected = new Set(userState.rejected || []);
+  let n = 0;
+  day.stops.forEach((st, si) => {
+    if (isIndoor(st.place)) return;
+    const picked = pickReplacement(dayIdx, si, { indoor: true }, used, new Set([...rejected, st.place.id]));
+    if (!picked) return;
+    used.add(picked.id);
+    recordSwap(st, picked, rejected);
+    n++;
+  });
+  if (n) refreshPlanKeepingDay();
+  return n;
 }
 
 function undoSwap(originalId) {
@@ -815,12 +856,15 @@ function renderItinerary(itinerary) {
   contentContainer.style.setProperty("--day", activeDay.color || "#2346D8");
 
   const dayTitle = (isTr ? activeDay.titleTr : activeDay.titleEn).replace(/^(\d+\. Gün|Day \d+):\s*/, "");
+  const dayDate = tripDate(userState.startDate, activeDayIndex);
+  const times = scheduleDay(activeDay, activeDayIndex, userState, country ? country.id : "");
   const header = document.createElement("div");
   header.className = "day-header";
   header.innerHTML = `
     <div>
       <h3>${isTr ? `${activeDay.dayNumber}. gün` : `Day ${activeDay.dayNumber}`}: ${escapeHtml(dayTitle)}</h3>
-      <p class="area">${escapeHtml(activeDay.neighborhood)}</p>
+      <p class="area">${escapeHtml(activeDay.neighborhood)}${dayDate ? `, ${escapeHtml(formatTripDate(dayDate, isTr))}` : ""}</p>
+      ${dayDate ? `<p class="day-weather" data-weather-day="${activeDayIndex}"><span class="weather-loading">${isTr ? "Hava durumu yükleniyor" : "Loading the weather"}</span></p>` : ""}
     </div>
     <div class="day-stats">
       <div><strong>${activeDay.stats.stopsCount}</strong><span>${isTr ? "durak" : "stops"}</span></div>
@@ -829,6 +873,11 @@ function renderItinerary(itinerary) {
     </div>
   `;
   contentContainer.appendChild(header);
+  const rainBox = document.createElement("div");
+  rainBox.className = "rain-box";
+  rainBox.hidden = true;
+  contentContainer.appendChild(rainBox);
+  if (dayDate) loadDayWeather(itinerary, activeDayIndex, header.querySelector(".day-weather"), rainBox);
 
   const line = document.createElement("div");
   line.className = "stops";
@@ -884,9 +933,11 @@ function renderItinerary(itinerary) {
         <div class="stop-photo">${photoMarkup(p, name)}</div>
         <div class="stop-body">
           <div class="stop-meta">
-            <span class="slot">${isTr ? slot.tr : slot.en}</span>
+            <span class="slot">${fmtClock(times[idx].start)}–${fmtClock(times[idx].end)}</span>
+            <span>${isTr ? slot.tr : slot.en}</span>
             <span>${isTr ? `burada yaklaşık ${p.durationHours} saat` : `about ${p.durationHours} h here`}</span>
           </div>
+          ${closureNote(stop, p, isTr)}
           <h4 class="stop-title">${escapeHtml(name)}</h4>
           <p class="stop-desc">${escapeHtml(isTr ? p.descTr : p.descEn)}</p>
           <div class="tags">${tags}<span class="tag tag-budget">${budgetLabel(p, isTr)}</span></div>
@@ -939,6 +990,8 @@ function renderItinerary(itinerary) {
 
   contentContainer.appendChild(line);
   hydratePlaceImages(line);
+  syncTripBar();
+  renderBudget(itinerary);
   const swapped = line.querySelector(".just-swapped");
   if (swapped) {
     swapped.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -946,6 +999,160 @@ function renderItinerary(itinerary) {
   }
   renderStayCard(itinerary, contentContainer);
   updateMap(activeDay.stops, country, activeDay.color, activeDay.hotel);
+}
+
+function closureNote(stop, p, isTr) {
+  const names = WEEKDAYS[isTr ? "tr" : "en"];
+  if (stop.closedOnDay) {
+    const date = tripDate(userState.startDate, activeDayIndex);
+    return `<p class="closed-note warn">${isTr
+      ? `${escapeHtml(names[date.getDay()])} günleri kapalı ve başka güne alınamadı. "Bu yeri değiştir" ile açık bir yer seçebilirsin.`
+      : `Closed on ${escapeHtml(names[date.getDay()])}s and couldn't be moved. Use "Swap this place" to pick an open one.`}</p>`;
+  }
+  if (stop.movedFrom != null) {
+    const label = closedDaysLabel(p, isTr);
+    return `<p class="closed-note moved">${label
+      ? (isTr ? `${escapeHtml(label)}; bu yüzden ${stop.movedFrom + 1}. günden buraya alındı.` : `${escapeHtml(label)}, so it was moved here from day ${stop.movedFrom + 1}.`)
+      : (isTr ? `${stop.movedFrom + 1}. gündeki kapalı bir yerle yer değiştirdi.` : `Swapped with a place that is closed on day ${stop.movedFrom + 1}.`)}</p>`;
+  }
+  const label = closedDaysLabel(p, isTr);
+  return label ? `<p class="closed-note">${escapeHtml(label)}${userState.startDate ? "" : (isTr ? ". Tarih seçersen plan buna göre ayarlanır." : ". Pick dates and the plan works around it.")}</p>` : "";
+}
+
+// Weather for the open day, plus a rainy-day offer to switch to indoor places
+async function loadDayWeather(itinerary, dayIdx, el, rainBox) {
+  if (!el) return;
+  const isTr = currentLanguage === "tr";
+  const day = itinerary.days[dayIdx];
+  if (!day.stops.length) { el.remove(); return; }
+  const lat = day.stops.reduce((t, s) => t + s.place.lat, 0) / day.stops.length;
+  const lng = day.stops.reduce((t, s) => t + s.place.lng, 0) / day.stops.length;
+  // One request for every day spent in this area
+  const idxs = itinerary.days.map((d, i) => i).filter(i => itinerary.days[i].regionId === day.regionId);
+  const dates = idxs.map(i => isoDate(tripDate(userState.startDate, i)));
+  let data = {};
+  try { data = await getWeather(lat, lng, dates); } catch (e) { /* offline */ }
+  if (!el.isConnected) return;
+  const w = data[isoDate(tripDate(userState.startDate, dayIdx))];
+  if (!w) {
+    el.innerHTML = `<span class="weather-loading">${isTr ? "Bu tarih için hava bilgisi alınamadı." : "No weather available for this date."}</span>`;
+    return;
+  }
+  el.innerHTML = weatherMarkup(w, isTr);
+  el.title = w.kind === "forecast"
+    ? (isTr ? "Open-Meteo hava tahmini" : "Open-Meteo forecast")
+    : (isTr ? `Tahmin için çok erken: son ${w.years} yılın aynı günlerinin ortalaması (Open-Meteo)` : `Too early for a forecast: average of the same dates over the last ${w.years} years (Open-Meteo)`);
+  const outdoor = day.stops.filter(s => !isIndoor(s.place)).length;
+  if (isWet(w) && outdoor) {
+    rainBox.hidden = false;
+    rainBox.innerHTML = `
+      <p>${w.kind === "forecast"
+        ? (isTr ? `Bu gün yağmur bekleniyor. Plandaki ${outdoor} durak açık havada.` : `Rain is expected this day. ${outdoor} of the stops are outdoors.`)
+        : (isTr ? `Bu tarihlerde sık yağmur yağıyor. Plandaki ${outdoor} durak açık havada.` : `It often rains around this date. ${outdoor} of the stops are outdoors.`)}</p>
+      <button type="button" class="btn btn-ghost btn-sm" data-indoor>${isTr ? "Açık hava duraklarını kapalı mekânlarla değiştir" : "Swap outdoor stops for indoor places"}</button>`;
+    rainBox.querySelector("[data-indoor]").addEventListener("click", (e) => {
+      const n = makeDayIndoor(dayIdx);
+      if (n) showToast(isTr ? `${n} durak kapalı mekânla değiştirildi. Geri almak için durakta "Önerilen yere dön"e bas.` : `${n} stops swapped for indoor places. Use "Back to the suggested place" to undo.`);
+      else { e.target.disabled = true; e.target.textContent = isTr ? "Yakında uygun kapalı mekân kalmadı" : "No suitable indoor places left nearby"; }
+    });
+  }
+}
+
+// ---------- trip bar: start date + calendar ----------
+function syncTripBar() {
+  const input = document.getElementById("trip-start-date");
+  if (input) {
+    input.min = new Date().toISOString().slice(0, 10);
+    if (input.value !== (userState.startDate || "")) input.value = userState.startDate || "";
+  }
+  const hint = document.getElementById("trip-date-hint");
+  if (hint) {
+    const isTr = currentLanguage === "tr";
+    if (!userState.startDate) hint.textContent = isTr ? "Tarih seçersen hava durumu, kapalı günler ve saatler buna göre ayarlanır." : "Pick a date to get the weather, closing days and times for your trip.";
+    else {
+      const end = tripDate(userState.startDate, (currentItinerary ? currentItinerary.days.length : userState.days) - 1);
+      hint.textContent = (isTr ? "Dönüş: " : "Last day: ") + formatTripDate(end, isTr);
+    }
+  }
+}
+
+function initTripBar() {
+  const input = document.getElementById("trip-start-date");
+  if (input) input.addEventListener("change", () => {
+    userState.startDate = input.value || "";
+    saveState();
+    refreshPlanKeepingDay();
+  });
+  const cal = document.getElementById("btn-calendar");
+  if (cal) cal.addEventListener("click", () => {
+    const isTr = currentLanguage === "tr";
+    if (!currentItinerary) return;
+    if (!userState.startDate) {
+      showToast(isTr ? "Takvime eklemek için önce gezi tarihini seç." : "Pick your trip date first.");
+      if (input) { input.focus(); try { input.showPicker && input.showPicker(); } catch (e) {} }
+      return;
+    }
+    const ics = buildIcs(currentItinerary, userState, isTr);
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `globeplanner-${currentItinerary.country.id}-${userState.startDate}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    showToast(isTr ? "Takvim dosyası indirildi. Açınca tüm duraklar takvimine eklenir." : "Calendar file downloaded. Open it to add every stop to your calendar.");
+  });
+}
+
+// ---------- budget ----------
+function formatMoney(n, isTr) {
+  return Math.round(n).toLocaleString(isTr ? "tr-TR" : "en-GB") + " €";
+}
+async function renderBudget(itinerary) {
+  const box = document.getElementById("budget-card");
+  if (!box) return;
+  let data = null;
+  try { data = await loadHotelData(); } catch (e) { /* use typical prices */ }
+  if (itinerary !== currentItinerary) return;
+  const isTr = currentLanguage === "tr";
+  const est = estimateBudget(itinerary, userState, data);
+  const p = est.parts;
+  const max = Math.max(1, ...Object.values(p));
+  const rows = [
+    ["hotel", isTr ? `Konaklama (${est.nights} gece${est.rooms > 1 ? `, ${est.rooms} oda` : ""})` : `Stay (${est.nights} night${est.nights === 1 ? "" : "s"}${est.rooms > 1 ? `, ${est.rooms} rooms` : ""})`],
+    ["food", isTr ? "Yemek ve içecek" : "Food and drinks"],
+    ["tickets", isTr ? "Giriş ücretleri ve etkinlikler" : "Tickets and activities"],
+    ["local", isTr ? "Şehir içi ulaşım" : "Getting around"],
+    ["intercity", isTr ? "Şehirler arası tren / otobüs" : "Trains and buses between cities"]
+  ].filter(([k]) => p[k] > 0.5);
+  const hotelSrc = est.hotelHow.includes("picked") ? (isTr ? "seçtiğin otelin fiyatı" : "your chosen hotel's price")
+    : est.hotelHow.includes("area") ? (isTr ? "bölgedeki otellerin güncel örnek fiyatları" : "current sample prices of hotels in the area")
+    : (isTr ? "ülkenin ortalama otel fiyatları" : "typical hotel prices in the country");
+  box.innerHTML = `
+    <div class="budget-head">
+      <div>
+        <h3>${isTr ? "Tahmini gezi bütçesi" : "Estimated trip budget"}</h3>
+        <p class="budget-sub">${isTr
+          ? `${est.people} kişi, ${itinerary.days.length} gün, ${({ economy: "ekonomik", moderate: "dengeli", luxury: "konforlu" })[userState.budget]} bütçe`
+          : `${est.people} ${est.people === 1 ? "person" : "people"}, ${itinerary.days.length} days, ${userState.budget} budget`}</p>
+      </div>
+      <div class="budget-total">
+        <strong>${formatMoney(est.total, isTr)}</strong>
+        ${est.people > 1 ? `<span>${isTr ? `kişi başı ${formatMoney(est.perPerson, isTr)}` : `${formatMoney(est.perPerson, isTr)} per person`}</span>` : ""}
+      </div>
+    </div>
+    <ul class="budget-rows">
+      ${rows.map(([k, label]) => `
+        <li>
+          <span class="budget-label">${label}</span>
+          <span class="budget-bar"><span style="width:${Math.max(3, p[k] / max * 100).toFixed(1)}%"></span></span>
+          <span class="budget-val">${formatMoney(p[k], isTr)}</span>
+        </li>`).join("")}
+    </ul>
+    <p class="budget-note">${isTr
+      ? `Uçak bileti hariç. Konaklama için ${hotelSrc} kullanıldı; giriş ücretleri ve yemek yaklaşık değerlerdir. Otel seçince ya da yer değiştirince hesap güncellenir.`
+      : `Flights not included. Stay uses ${hotelSrc}; tickets and food are approximate. Picking a hotel or swapping places updates it.`}</p>`;
 }
 
 // "Where to stay" for the active day
@@ -1048,7 +1255,7 @@ function renderStayCard(itinerary, container) {
     if (el) el.focus();
   };
   const setHotel = (h) => {
-    if (h) userState.hotels[key] = { name: h.name, lat: h.lat, lng: h.lng, address: h.address || "", source: h.source || "own" };
+    if (h) userState.hotels[key] = Object.assign({ name: h.name, lat: h.lat, lng: h.lng, address: h.address || "", source: h.source || "own" }, h.eur ? { eur: h.eur } : {});
     else delete userState.hotels[key];
     saveState();
     refreshPlanKeepingDay();
@@ -1069,7 +1276,8 @@ function renderStayCard(itinerary, container) {
     dateInput.addEventListener("change", () => {
       userState.startDate = dateInput.value || "";
       saveState();
-      rerender("#stay-start-date");
+      refreshPlanKeepingDay();
+      syncTripBar();
     });
   }
 
@@ -1155,7 +1363,8 @@ function renderRichHotels(hotels, data, stay, list, links, onPick) {
 
   list.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", () => {
     const h = top[+b.dataset.pick];
-    onPick({ name: h.name, lat: h.lat, lng: h.lng, address: "" });
+    const eur = (h.prices && h.prices.length) ? Math.min(...h.prices.map(x => x.eur)) : null;
+    onPick({ name: h.name, lat: h.lat, lng: h.lng, address: "", source: "suggested", eur });
   }));
 }
 
@@ -1500,7 +1709,7 @@ function buildShareLink() {
   Object.keys(u.hotels || {}).forEach(k => {
     const h = u.hotels[k];
     if (h && isFinite(h.lat) && isFinite(h.lng)) {
-      hotels[k] = { name: h.name, lat: +(+h.lat).toFixed(5), lng: +(+h.lng).toFixed(5), source: h.source || "own" };
+      hotels[k] = Object.assign({ name: h.name, lat: +(+h.lat).toFixed(5), lng: +(+h.lng).toFixed(5), source: h.source || "own" }, h.eur ? { eur: Math.round(h.eur) } : {});
     }
   });
   const packed = {
@@ -1582,14 +1791,16 @@ function renderPrintView() {
     const date = fmtDate(di);
     let body = "";
     if (day.hotel) body += `<p class="pv-hotel">${isTr ? "Başlangıç: " : "Start: "}<strong>${escapeHtml(day.hotel.name)}</strong></p>` + (day.stops[0] ? leg(day.hotel, day.stops[0].place) : "");
+    const times = scheduleDay(day, di, userState, it.country.id);
     day.stops.forEach((st, i) => {
       const p = st.place;
       const slot = SLOT_LABELS[st.timeSlot] || SLOT_LABELS.morning;
+      const closed = closedDaysLabel(p, isTr);
       body += `
         <div class="pv-stop">
           <div class="pv-num">${i + 1}</div>
           <div>
-            <p class="pv-meta">${isTr ? slot.tr : slot.en}, ${isTr ? `yaklaşık ${p.durationHours} saat` : `about ${p.durationHours} h`}</p>
+            <p class="pv-meta">${fmtClock(times[i].start)}–${fmtClock(times[i].end)}, ${isTr ? slot.tr : slot.en}${closed ? `, ${escapeHtml(closed)}` : ""}</p>
             <h3>${escapeHtml(isTr ? p.nameTr : p.nameEn)}</h3>
             <p>${escapeHtml(isTr ? p.descTr : p.descEn)}</p>
             <p class="pv-small"><strong>${isTr ? "İpucu:" : "Tip:"}</strong> ${escapeHtml(isTr ? p.insiderTipTr : p.insiderTipEn)}</p>

@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="css/styles.css?v=7.3">
+  <link rel="stylesheet" href="css/styles.css?v=8.0">
 
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js" defer></script>
 </head>
@@ -330,6 +330,15 @@
         </div>
       </div>
 
+      <div class="trip-bar">
+        <label class="trip-date">
+          <span data-i18n="tripStart">Gezi başlangıcı</span>
+          <input type="date" id="trip-start-date">
+        </label>
+        <p id="trip-date-hint" class="trip-hint"></p>
+        <button id="btn-calendar" type="button" class="btn btn-ghost btn-sm" data-i18n="btnCalendar">Takvime ekle</button>
+      </div>
+
       <div id="day-tabs" class="day-tabs" role="tablist"></div>
 
       <div class="plan-grid">
@@ -341,6 +350,8 @@
           </div>
         </aside>
       </div>
+
+      <section id="budget-card" class="budget-card" aria-live="polite"></section>
     </section>
 
     <!-- SURVIVAL GUIDE -->
@@ -373,17 +384,18 @@
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="js/translations.js?v=7.3"></script>
-  <script src="js/data.js?v=7.3"></script>
-  <script src="js/places-core.js?v=7.3"></script>
-  <script src="js/places-1.js?v=7.3"></script>
-  <script src="js/places-2.js?v=7.3"></script>
-  <script src="js/places-3.js?v=7.3"></script>
-  <script src="js/places-4.js?v=7.3"></script>
-  <script src="js/places-5.js?v=7.3"></script>
-  <script src="js/stays.js?v=7.3"></script>
-  <script src="js/hotels.js?v=7.3"></script>
-  <script src="js/planner.js?v=7.3"></script>
-  <script src="js/app.js?v=7.3"></script>
+  <script src="js/translations.js?v=8.0"></script>
+  <script src="js/data.js?v=8.0"></script>
+  <script src="js/places-core.js?v=8.0"></script>
+  <script src="js/places-1.js?v=8.0"></script>
+  <script src="js/places-2.js?v=8.0"></script>
+  <script src="js/places-3.js?v=8.0"></script>
+  <script src="js/places-4.js?v=8.0"></script>
+  <script src="js/places-5.js?v=8.0"></script>
+  <script src="js/stays.js?v=8.0"></script>
+  <script src="js/hotels.js?v=8.0"></script>
+  <script src="js/extras.js?v=8.0"></script>
+  <script src="js/planner.js?v=8.0"></script>
+  <script src="js/app.js?v=8.0"></script>
 </body>
 </html>
