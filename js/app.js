@@ -105,6 +105,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initWizardNavigation();
   initOptionSelections();
   initActionButtons();
+  initThemeToggle();
   selectCountry(userState.country);
   safeCreateIcons();
 
@@ -122,6 +123,26 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 });
+
+// Light / dark theme: follows the device until the traveller picks one, then remembers it
+function initThemeToggle() {
+  const btn = document.getElementById("theme-toggle");
+  if (!btn) return;
+  const label = () => {
+    const dark = document.documentElement.getAttribute("data-theme") === "dark";
+    const isTr = currentLanguage === "tr";
+    btn.setAttribute("aria-label", dark ? (isTr ? "Açık temaya geç" : "Switch to light theme") : (isTr ? "Karanlık temaya geç" : "Switch to dark theme"));
+    btn.setAttribute("aria-pressed", dark ? "true" : "false");
+  };
+  label();
+  btn.addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("gp_theme", next); } catch (e) { /* storage unavailable */ }
+    label();
+  });
+  document.addEventListener("gp:lang", label);
+}
 
 // Country count shown as a rounded-down "N+" label (33 -> "30+", 44 -> "40+")
 function getCountryCountLabel() {
@@ -387,6 +408,7 @@ function setLanguage(lang) {
     btn.setAttribute("aria-pressed", btn.dataset.lang === lang ? "true" : "false");
   });
   updateHeroFacts();
+  document.dispatchEvent(new Event("gp:lang"));
 
   // Refresh country lists in new language
   populateAllCountriesSelect();

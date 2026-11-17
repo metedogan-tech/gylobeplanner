@@ -181,17 +181,25 @@ async function fetchHotelsNear(center, radiusM) {
   const cached = hotelCacheGet(key);
   if (cached) return cached;
   const q = `[out:json][timeout:20];nwr["tourism"~"^(hotel|hostel|guest_house|apartment)$"]["name"](around:${radiusM},${center.lat},${center.lng});out center tags 150;`;
-  const endpoints = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
-  let data = null, lastErr;
-  for (const ep of endpoints) {
-    try {
-      const res = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } });
-      if (!res.ok) throw new Error("overpass " + res.status);
-      data = await res.json();
-      break;
-    } catch (e) { lastErr = e; }
+  const endpoints = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+  // Ask the public servers in turn, giving each a few seconds; first good answer wins
+  const ask = (ep, delay) => new Promise((resolve, reject) => {
+    setTimeout(async () => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      try {
+        const res = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" }, signal: ctrl.signal });
+        if (!res.ok) throw new Error("overpass " + res.status);
+        resolve(await res.json());
+      } catch (e) { reject(e); } finally { clearTimeout(timer); }
+    }, delay);
+  });
+  let data;
+  try {
+    data = await Promise.any(endpoints.map((ep, i) => ask(ep, i * 3000)));
+  } catch (e) {
+    throw new Error("overpass unavailable");
   }
-  if (!data) throw lastErr || new Error("overpass");
   const hotels = (data.elements || []).map(el => {
     const t = el.tags || {};
     const lat = el.lat != null ? el.lat : el.center && el.center.lat;
