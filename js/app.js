@@ -1055,11 +1055,12 @@ function updateMap(stops, country, lineColor, hotel) {
     try {
       mapInstance = L.map("map").setView([defaultLat, defaultLng], country ? country.zoom || 13 : 13);
 
-      // CARTO "Voyager" basemap (OpenStreetMap data); free for light use with attribution
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+      // OpenStreetMap tiles. Their usage policy requires the page's Referer header,
+      // so the page must not send "no-referrer" globally.
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
-        subdomains: "abcd",
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        referrerPolicy: "strict-origin-when-cross-origin",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
       }).addTo(mapInstance);
     } catch (e) {
       console.warn("Leaflet map initialization skipped:", e);
