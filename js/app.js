@@ -15,7 +15,8 @@ const userState = {
   hotels: {},        // stay area key -> { name, lat, lng, address, source }
   bookingMode: {},   // stay area key -> "own" (has a booking) | "none" (wants suggestions)
   swaps: {},         // original place id -> place the traveller chose instead
-  rejected: []       // places the traveller swapped out (never suggested again)
+  rejected: [],      // places the traveller swapped out (never suggested again)
+  currency: ""       // "" = automatic (TRY in Turkish, EUR in English)
 };
 
 // ---------- Remember where the traveller left off (survives a page refresh) ----------
@@ -53,6 +54,7 @@ function applySavedState(raw) {
     userState.bookingMode = u.bookingMode && typeof u.bookingMode === "object" ? u.bookingMode : {};
     userState.swaps = u.swaps && typeof u.swaps === "object" ? u.swaps : {};
     userState.rejected = Array.isArray(u.rejected) ? u.rejected.slice(-200) : [];
+    userState.currency = typeof u.currency === "string" && CURRENCY_NAMES[u.currency] ? u.currency : "";
     return raw;
   } catch (e) { return null; }
 }
@@ -117,6 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initActionButtons();
   initThemeToggle();
   initTripBar();
+  loadRates().then(() => { if (planVisible && currentItinerary) renderItinerary(currentItinerary); });
   selectCountry(userState.country);
   safeCreateIcons();
 
@@ -1107,8 +1110,13 @@ function initTripBar() {
 }
 
 // ---------- budget ----------
+function activeCurrency() {
+  const opts = currencyOptions(userState.country);
+  if (userState.currency && opts.includes(userState.currency)) return userState.currency;
+  return currentLanguage === "tr" ? "TRY" : "EUR";
+}
 function formatMoney(n, isTr) {
-  return Math.round(n).toLocaleString(isTr ? "tr-TR" : "en-GB") + " €";
+  return money(n, activeCurrency(), isTr);
 }
 async function renderBudget(itinerary) {
   const box = document.getElementById("budget-card");
@@ -1138,6 +1146,12 @@ async function renderBudget(itinerary) {
           ? `${est.people} kişi, ${itinerary.days.length} gün, ${({ economy: "ekonomik", moderate: "dengeli", luxury: "konforlu" })[userState.budget]} bütçe`
           : `${est.people} ${est.people === 1 ? "person" : "people"}, ${itinerary.days.length} days, ${userState.budget} budget`}</p>
       </div>
+      <label class="cur-pick">
+        <span>${isTr ? "Para birimi" : "Currency"}</span>
+        <select id="currency-select">
+          ${currencyOptions(itinerary.country.id).map(c => `<option value="${c}"${c === activeCurrency() ? " selected" : ""}>${c}, ${CURRENCY_NAMES[c][isTr ? 0 : 1]}</option>`).join("")}
+        </select>
+      </label>
       <div class="budget-total">
         <strong>${formatMoney(est.total, isTr)}</strong>
         ${est.people > 1 ? `<span>${isTr ? `kişi başı ${formatMoney(est.perPerson, isTr)}` : `${formatMoney(est.perPerson, isTr)} per person`}</span>` : ""}
@@ -1153,7 +1167,27 @@ async function renderBudget(itinerary) {
     </ul>
     <p class="budget-note">${isTr
       ? `Uçak bileti hariç. Konaklama için ${hotelSrc} kullanıldı; giriş ücretleri ve yemek yaklaşık değerlerdir. Otel seçince ya da yer değiştirince hesap güncellenir.`
-      : `Flights not included. Stay uses ${hotelSrc}; tickets and food are approximate. Picking a hotel or swapping places updates it.`}</p>`;
+      : `Flights not included. Stay uses ${hotelSrc}; tickets and food are approximate. Picking a hotel or swapping places updates it.`}${rateNote(isTr)}</p>`;
+  const sel = box.querySelector("#currency-select");
+  sel.addEventListener("change", () => {
+    userState.currency = sel.value;
+    saveState();
+    renderItinerary(currentItinerary);
+    const again = document.getElementById("currency-select");
+    if (again) again.focus();
+  });
+}
+
+function rateNote(isTr) {
+  const cur = activeCurrency();
+  if (cur === "EUR") return "";
+  const r = FX.rates[cur] || 1;
+  const rate = r >= 100 ? Math.round(r) : r.toFixed(2);
+  const rateTxt = new Intl.NumberFormat(isTr ? "tr-TR" : "en-GB").format(rate);
+  const when = FX.live && FX.date ? formatTripDate(new Date(FX.date + "T12:00:00"), isTr, false) : "";
+  return isTr
+    ? ` Fiyatlar euro üzerinden çevrildi: 1 € = ${rateTxt} ${cur}${FX.live ? (when ? ` (${when} kuru)` : "") : " (yaklaşık kur, güncel kura ulaşılamadı)"}.`
+    : ` Converted from euros: €1 = ${rateTxt} ${cur}${FX.live ? (when ? ` (rate of ${when})` : "") : " (approximate; live rate unavailable)"}.`;
 }
 
 // "Where to stay" for the active day
@@ -1337,7 +1371,7 @@ function renderRichHotels(hotels, data, stay, list, links, onPick) {
     const p = h.prices && h.prices.length ? h.prices : null;
     const rating = h.rating ? `<span class="hotel-rating"><strong>${isTr ? String(h.rating).replace(".", ",") : h.rating}</strong>/5</span> <span class="hotel-reviews">(${h.reviews.toLocaleString(isTr ? "tr-TR" : "en-GB")} ${isTr ? "yorum" : "reviews"})</span>` : "";
     const priceHtml = p
-      ? `<p class="hotel-price"><span>${isTr ? "Gecelik" : "Per night"}</span> <strong>${formatEur(p[0].eur, isTr)}</strong> <span>${escapeHtml(p[0].site)}</span></p>
+      ? `<p class="hotel-price"><span>${isTr ? "Gecelik" : "Per night"}</span> <strong>${activeCurrency() === "EUR" ? "" : "≈ "}${formatEur(p[0].eur, isTr)}</strong>${activeCurrency() === "EUR" ? "" : ` <span>(${money(p[0].eur, "EUR", isTr)})</span>`} <span>${escapeHtml(p[0].site)}</span></p>
          ${p.length > 1 ? `<p class="hotel-meta">${p.slice(1).map(x => `${escapeHtml(x.site)} ${formatEur(x.eur, isTr)}`).join(", ")}</p>` : ""}`
       : `<p class="hotel-meta">${isTr ? "Bu tarih için fiyat yok; Booking'e bak." : "No price for the sample date; check Booking."}</p>`;
     return `
@@ -1359,7 +1393,7 @@ function renderRichHotels(hotels, data, stay, list, links, onPick) {
         </div>
       </article>`;
   }).join("") + `<p class="stay-note">${isTr
-    ? `Puan ve yorumlar TripAdvisor'dan. Fiyatlar ${sampleDate} için 1 gece, 2 kişilik örnek fiyatlardır ve her gün güncellenir; kendi tarihlerinin fiyatı için "Tarihlerime göre fiyat"a bas.`
+    ? `Puan ve yorumlar TripAdvisor'dan. Fiyatlar ${sampleDate} için 1 gece, 2 kişilik örnek fiyatlardır ve her gün güncellenir${activeCurrency() === "EUR" ? "" : "; euro fiyatlar günün kuruyla çevrildi"}. Kendi tarihlerinin fiyatı için "Tarihlerime göre fiyat"a bas.`
     : `Ratings and reviews from TripAdvisor. Prices are samples for 1 night on ${sampleDate} for 2 adults, refreshed daily; tap "Price for my dates" for your own dates.`}</p>`;
 
   list.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", () => {
@@ -1391,7 +1425,7 @@ function loadHotelData() {
 }
 
 function formatEur(n, isTr) {
-  return isTr ? `${n.toLocaleString("tr-TR")} €` : `€${n.toLocaleString("en-GB")}`;
+  return money(n, activeCurrency(), isTr);
 }
 
 async function loadHotelSuggestions(itinerary, stay, list, links, onPick) {
@@ -1715,7 +1749,7 @@ function buildShareLink() {
   });
   const packed = {
     c: u.country, d: u.days, t: u.travelerType, i: u.interests, p: u.pace, b: u.budget,
-    s: u.startDate || "", h: hotels, m: u.bookingMode || {}, w: u.swaps || {}, a: activeDayIndex, l: currentLanguage
+    s: u.startDate || "", h: hotels, m: u.bookingMode || {}, w: u.swaps || {}, a: activeDayIndex, l: currentLanguage, cu: u.currency || ""
   };
   return `${location.origin}${location.pathname}#plan=${b64urlEncode(JSON.stringify(packed))}`;
 }
@@ -1732,7 +1766,7 @@ function readSharedLink() {
       currentStep: totalSteps,
       lang: x.l,
       userState: { country: x.c, days: x.d, travelerType: x.t, interests: x.i, pace: x.p, budget: x.b,
-        startDate: x.s, hotels: x.h, bookingMode: x.m, swaps: x.w, rejected: [] }
+        startDate: x.s, hotels: x.h, bookingMode: x.m, swaps: x.w, rejected: [], currency: x.cu }
     });
   } catch (e) { return null; }
 }

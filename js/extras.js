@@ -482,3 +482,58 @@ function buildIcs(itinerary, prefs, isTr) {
   lines.push("END:VCALENDAR");
   return lines.join("\r\n");
 }
+
+// ---------- currencies: prices are stored in EUR and shown in the traveller's currency ----------
+const LOCAL_CURRENCY = { turkey: "TRY", uk: "GBP", japan: "JPY", usa: "USD", egypt: "EGP", uae: "AED", thailand: "THB",
+  brazil: "BRL", switzerland: "CHF", czechia: "CZK", norway: "NOK", iceland: "ISK" };
+const CURRENCY_NAMES = {
+  EUR: ["Euro", "Euro"], TRY: ["Türk lirası", "Turkish lira"], USD: ["ABD doları", "US dollar"], GBP: ["Sterlin", "British pound"],
+  JPY: ["Japon yeni", "Japanese yen"], EGP: ["Mısır lirası", "Egyptian pound"], AED: ["BAE dirhemi", "UAE dirham"],
+  THB: ["Tayland bahtı", "Thai baht"], BRL: ["Brezilya reali", "Brazilian real"], CHF: ["İsviçre frangı", "Swiss franc"],
+  CZK: ["Çek korunası", "Czech koruna"], NOK: ["Norveç kronu", "Norwegian krone"], ISK: ["İzlanda kronu", "Icelandic króna"]
+};
+// Used only if no live rate can be fetched (rough, late 2026)
+const FALLBACK_RATES = { EUR: 1, USD: 1.16, GBP: 0.87, TRY: 49.5, JPY: 178, EGP: 55, AED: 4.26, THB: 37.5, BRL: 6.2,
+  CHF: 0.93, CZK: 24.3, NOK: 11.7, ISK: 145 };
+const FX = { rates: Object.assign({}, FALLBACK_RATES), live: false, date: "" };
+const FX_CACHE_KEY = "gp_fx_v1";
+
+async function loadRates() {
+  try {
+    const hit = JSON.parse(localStorage.getItem(FX_CACHE_KEY) || "null");
+    if (hit && Date.now() - hit.t < 12 * 3600e3) { Object.assign(FX, { rates: hit.rates, live: true, date: hit.date }); return FX; }
+  } catch (e) { /* no cache */ }
+  const save = (rates, date) => {
+    Object.assign(FX, { rates: Object.assign({}, FALLBACK_RATES, rates, { EUR: 1 }), live: true, date });
+    try { localStorage.setItem(FX_CACHE_KEY, JSON.stringify({ t: Date.now(), rates: FX.rates, date })); } catch (e) { /* full */ }
+  };
+  try {
+    const j = await fetchJson("https://open.er-api.com/v6/latest/EUR");
+    if (j && j.rates) { save(j.rates, (j.time_last_update_unix ? new Date(j.time_last_update_unix * 1000) : new Date()).toISOString().slice(0, 10)); return FX; }
+  } catch (e) { /* try the next source */ }
+  try {
+    const j = await fetchJson("https://api.frankfurter.app/latest?from=EUR");
+    if (j && j.rates) { save(j.rates, j.date || ""); return FX; }
+  } catch (e) { /* keep fallback rates */ }
+  return FX;
+}
+
+function currencyOptions(countryId) {
+  const list = ["EUR", "TRY", "USD", "GBP"];
+  const local = LOCAL_CURRENCY[countryId];
+  if (local && !list.includes(local)) list.push(local);
+  return list;
+}
+
+// Format an amount given in EUR in the chosen currency
+function money(eur, cur, isTr) {
+  if (!FX.rates[cur]) cur = "EUR";
+  const v = eur * FX.rates[cur];
+  const big = Math.abs(v) >= 1000 || cur === "JPY" || cur === "ISK";
+  const rounded = big && Math.abs(v) >= 10000 ? Math.round(v / 10) * 10 : Math.round(v);
+  try {
+    return new Intl.NumberFormat(isTr ? "tr-TR" : "en-GB", { style: "currency", currency: cur, maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(rounded);
+  } catch (e) {
+    return `${rounded.toLocaleString(isTr ? "tr-TR" : "en-GB")} ${cur}`;
+  }
+}
