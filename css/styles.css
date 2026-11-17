@@ -500,3 +500,20 @@ fieldset { min-width: 0; width: 100%; border: 0; padding: 0; margin: 0; }
 
 .stay-host:empty { display: none; }
 .stay-host .stay-card { margin: 0 0 26px; border-color: var(--line); }
+
+/* ---------- phones: keep the plan's controls compact ---------- */
+@media (max-width: 640px) {
+  .plan-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .plan-actions .share-wrap { grid-column: 1 / -1; }
+  .plan-actions .btn, .plan-actions .share-wrap, .plan-actions .share-wrap .btn { width: 100%; }
+  .plan-actions .btn { font-size: 0.88rem; padding: 10px 8px 8px; white-space: nowrap; }
+  .share-menu { right: 0; left: 0; }
+  .trip-bar { padding: 12px; gap: 8px 10px; }
+  .trip-date { flex: 1 1 auto; justify-content: space-between; }
+  .trip-date input { flex: 1; min-width: 0; }
+  .trip-hint { order: 3; flex-basis: 100%; font-size: 0.8rem; }
+  .day-header { padding: 18px; }
+  .day-header h3 { font-size: 1.3rem; }
+  .day-stats { gap: 8px 18px; }
+  .day-stats strong { font-size: 1.1rem; }
+}

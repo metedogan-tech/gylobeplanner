@@ -893,6 +893,11 @@ function renderItinerary(itinerary) {
     });
     tabsContainer.appendChild(tab);
   });
+  // Keep the open day's tab in view on narrow screens
+  const activeTab = tabsContainer.children[activeDayIndex];
+  if (activeTab && tabsContainer.scrollWidth > tabsContainer.clientWidth) {
+    tabsContainer.scrollLeft = Math.max(0, activeTab.offsetLeft - tabsContainer.offsetLeft - 16);
+  }
 
   const activeDay = itinerary.days[activeDayIndex];
   if (!activeDay) return;
