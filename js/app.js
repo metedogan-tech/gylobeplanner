@@ -1445,6 +1445,9 @@ function initActionButtons() {
       btnShare.setAttribute("aria-expanded", open ? "true" : "false");
       const nativeBtn = menu.querySelector('[data-share="native"]');
       if (nativeBtn) nativeBtn.hidden = !navigator.share;
+      // Keep the menu on screen whichever side the button sits on
+      menu.classList.remove("align-left");
+      if (open && menu.getBoundingClientRect().left < 8) menu.classList.add("align-left");
     });
     document.addEventListener("click", (e) => { if (!menu.contains(e.target)) close(); });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });

@@ -413,6 +413,7 @@ h1, h2, h3, h4 { font-family: inherit; letter-spacing: -0.015em; }
 .share-wrap { position: relative; display: inline-flex; }
 .share-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 1200; min-width: 230px; padding: 6px;
   background: var(--surface); border: 1.5px solid var(--ink); border-radius: 14px; box-shadow: var(--shadow); display: grid; }
+.share-menu.align-left { right: auto; left: 0; }
 .share-menu[hidden], .share-menu button[hidden] { display: none; }
 .share-menu button { font: inherit; font-weight: 700; text-align: left; padding: 10px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); cursor: pointer; }
 .share-menu button:hover { background: var(--paper); }
