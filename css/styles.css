@@ -527,7 +527,11 @@ fieldset { min-width: 0; width: 100%; border: 0; padding: 0; margin: 0; }
 .cur-menu .is-current { background: var(--paper); }
 .cur-menu .is-current .cur-name { color: var(--ink); }
 .cur-group { padding: 8px 12px 4px; font-size: 0.75rem; font-weight: 800; color: var(--muted); }
-@media (max-width: 420px) {
+@media (max-width: 480px) {
+  .brand-name { font-size: 1rem; }
+  .brand { gap: 7px; }
   .cur-btn { padding: 0 9px; font-size: 0.8rem; }
+  .cur-sym { display: none; }
+  .lang-btn { padding: 4px 9px 2px; }
   .cur-menu { position: fixed; left: 12px; right: 12px; top: 64px; min-width: 0; }
 }

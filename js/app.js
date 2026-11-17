@@ -1240,7 +1240,7 @@ function renderCurrencyNav() {
   const isTr = currentLanguage === "tr";
   const cur = activeCurrency();
   const sym = currencySymbol(cur);
-  btn.textContent = `${sym ? sym + " " : ""}${cur}`;
+  btn.innerHTML = `${sym ? `<span class="cur-sym">${escapeHtml(sym)}</span> ` : ""}${cur}`;
   btn.setAttribute("aria-label", `${isTr ? "Para birimi" : "Currency"}: ${CURRENCY_NAMES[cur][isTr ? 0 : 1]}`);
   const all = currencyOptions(userState.country);
   const local = LOCAL_CURRENCY[userState.country];
