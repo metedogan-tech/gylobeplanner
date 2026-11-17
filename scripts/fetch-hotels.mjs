@@ -46,8 +46,9 @@ const ZONE_CITY = {
   iceland: { reykjavik_city: "reykjavik", south_coast: "vik", snaefellsnes: "stykkisholmur" }
 };
 
-const PER_ZONE = 10;          // hotels kept per area
-const PRICED_PER_ZONE = 10;   // hotels we ask prices for
+const PER_ZONE = 8;           // hotels kept per area
+const PRICED_PER_ZONE = 8;    // hotels we ask prices for
+const DEADLINE = Date.now() + 30 * 60 * 1000; // stop asking for prices after 30 min
 
 // ---------- load the site's own place data to get each area's centre ----------
 function loadSiteData() {
@@ -72,7 +73,7 @@ const km = (a, b) => {
 async function getJson(url, tries = 3) {
   for (let i = 0; i < tries; i++) {
     try {
-      const res = await fetch(url, { headers: { "User-Agent": "GlobePlanner school project (github.com/metedogan-tech/gylobeplanner)" } });
+      const res = await fetch(url, { headers: { "User-Agent": "GlobePlanner school project (github.com/metedogan-tech/gylobeplanner)" }, signal: AbortSignal.timeout(20000) });
       if (res.ok) {
         const j = await res.json();
         if (!j.error) return j.result;
@@ -107,7 +108,7 @@ async function main() {
 
       if (!cityCache[city]) {
         const list = [];
-        for (const offset of [0, 100, 200]) {
+        for (const offset of [0, 100]) {
           const r = await getJson(`${API}/list?location_key=${CITY[city]}&limit=100&offset=${offset}&sort=best_value`);
           await sleep(400);
           if (!r || !r.list || !r.list.length) break;
@@ -140,6 +141,7 @@ async function main() {
 
       // Sample prices: 1 night, 2 adults, 30 days from now
       for (const h of picked.slice(0, PRICED_PER_ZONE)) {
+        if (Date.now() > DEADLINE) break;
         const r = await getJson(`${API}/rates?hotel_key=${h.key}&chk_in=${iso(checkin)}&chk_out=${iso(checkout)}&currency=EUR&adults=2&rooms=1`, 2);
         await sleep(350);
         if (r && Array.isArray(r.rates) && r.rates.length) {
@@ -150,17 +152,24 @@ async function main() {
       out[`${country}:${zone}`] = picked;
       console.log(`${country}:${zone} -> ${picked.length} hotels, ${picked.filter(h => h.prices).length} priced`);
     }
+    save(out, iso(checkin), iso(checkout)); // keep what we have even if a later country fails
   }
+  save(out, iso(checkin), iso(checkout));
+  console.log("areas:", Object.keys(out).length);
+}
 
+function save(out, checkin, checkout) {
+  // Keep yesterday's data for any area we couldn't refresh today
+  let previous = {};
+  try { previous = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "hotels.json"), "utf8")).areas || {}; } catch (e) { /* first run */ }
   const payload = {
     updated: new Date().toISOString(),
-    sample: { checkin: iso(checkin), checkout: iso(checkout), adults: 2, currency: "EUR" },
+    sample: { checkin, checkout, adults: 2, currency: "EUR" },
     source: "Xotelo (TripAdvisor data)",
-    areas: out
+    areas: Object.assign({}, previous, out)
   };
   fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
   fs.writeFileSync(path.join(ROOT, "data", "hotels.json"), JSON.stringify(payload));
-  console.log("areas:", Object.keys(out).length);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

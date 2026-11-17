@@ -27,8 +27,12 @@ jobs:
           node-version: 20
       - name: Fetch hotels
         run: node scripts/fetch-hotels.mjs
+        timeout-minutes: 34
+        continue-on-error: true
       - name: Commit updated data
+        if: always()
         run: |
+          [ -f data/hotels.json ] || { echo "No data"; exit 0; }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/hotels.json
