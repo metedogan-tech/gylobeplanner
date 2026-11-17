@@ -143,7 +143,7 @@ function applyHotelRouting(itinerary, hotels) {
 async function searchHotelByName(query, countryId, lang) {
   const cc = COUNTRY_ISO[countryId] || "";
   const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=0&limit=5" +
-    (cc ? `&countrycodes=${cc}` : "") + `&accept-language=${lang === "tr" ? "tr" : "en"}&q=` + encodeURIComponent(query);
+    (cc ? `&countrycodes=${cc}` : "") + `&q=` + encodeURIComponent(query); // local names, as on street signs
   const res = await fetch(url, { headers: { "Accept": "application/json" } });
   if (!res.ok) throw new Error("search " + res.status);
   const data = await res.json();
