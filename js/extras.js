@@ -518,10 +518,15 @@ async function loadRates() {
   return FX;
 }
 
+// Every currency is offered; the trip country's own currency comes right after the common ones
 function currencyOptions(countryId) {
   const list = ["EUR", "TRY", "USD", "GBP"];
   const local = LOCAL_CURRENCY[countryId];
   if (local && !list.includes(local)) list.push(local);
+  Object.keys(CURRENCY_NAMES)
+    .filter(c => !list.includes(c))
+    .sort((a, b) => CURRENCY_NAMES[a][0].localeCompare(CURRENCY_NAMES[b][0], "tr"))
+    .forEach(c => list.push(c));
   return list;
 }
 

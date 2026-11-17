@@ -1149,7 +1149,14 @@ async function renderBudget(itinerary) {
       <label class="cur-pick">
         <span>${isTr ? "Para birimi" : "Currency"}</span>
         <select id="currency-select">
-          ${currencyOptions(itinerary.country.id).map(c => `<option value="${c}"${c === activeCurrency() ? " selected" : ""}>${c}, ${CURRENCY_NAMES[c][isTr ? 0 : 1]}</option>`).join("")}
+          ${(() => {
+            const all = currencyOptions(itinerary.country.id);
+            const local = LOCAL_CURRENCY[itinerary.country.id];
+            const top = all.slice(0, local && !["EUR", "TRY", "USD", "GBP"].includes(local) ? 5 : 4);
+            const opt = (c) => `<option value="${c}"${c === activeCurrency() ? " selected" : ""}>${c}, ${CURRENCY_NAMES[c][isTr ? 0 : 1]}</option>`;
+            return `<optgroup label="${isTr ? "Sık kullanılanlar" : "Common"}">${top.map(opt).join("")}</optgroup>` +
+              `<optgroup label="${isTr ? "Diğer para birimleri" : "Other currencies"}">${all.slice(top.length).map(opt).join("")}</optgroup>`;
+          })()}
         </select>
       </label>
       <div class="budget-total">
